@@ -565,7 +565,8 @@ function BbDauCaMaterialSplitTables({
   tonKyLabel = 'Tồn đầu kỳ',
   tongColumnLabel = 'Tổng đầu',
   chiTietSlipLabel = 'CHI TIẾT TỒN ĐẦU CA',
-  tonNgoaiLabel = 'Tồn ngoài'
+  tonNgoaiLabel = 'Tồn ngoài',
+  showMixingTable = true
 }: {
   materialLines: BbDauCaProductLine[];
   onOpenTonFormula: (formula: BbDauCaTonDauFormula) => void;
@@ -576,6 +577,8 @@ function BbDauCaMaterialSplitTables({
   chiTietSlipLabel?: string;
   /** Cột phần không phân bổ từ NHUA-TRON: Tồn ngoài / Xuất ngoài. */
   tonNgoaiLabel?: string;
+  /** Tab Tồn: ẩn bảng NVL trộn (Tồn đầu/cuối kỳ + tỉ lệ trộn). */
+  showMixingTable?: boolean;
 }) {
   const { mixingLines, otherLines } = splitBbDauCaMaterialLinesByMixing(materialLines);
   const otherTotalKg = sumBbDauCaMaterialLinesTonKg(otherLines);
@@ -796,20 +799,22 @@ function BbDauCaMaterialSplitTables({
   return (
     <div className={`${BB_TABLE_CHILD_PANEL_CLASS} space-y-5 p-4 sm:p-5`}>
       <div className="flex flex-col gap-5">
-        {renderTable(
-          'NVL trộn',
-          'bg-white',
-          'bg-[#e8f0ed]',
-          mixingDisplayLines,
-          mixingTotalKg,
-          'Không có NVL trộn (ĐVT kg / Lít).',
-          true,
-          mixingSubtitle,
-          allocatedMixing.footerDaTronKg,
-          allocatedMixing.footerTonNgoaiKg,
-          allocatedMixing.allocatedFromNhuaTron ? allocatedMixing.nhuaTronKg : null,
-          true
-        )}
+        {showMixingTable
+          ? renderTable(
+              'NVL trộn',
+              'bg-white',
+              'bg-[#e8f0ed]',
+              mixingDisplayLines,
+              mixingTotalKg,
+              'Không có NVL trộn (ĐVT kg / Lít).',
+              true,
+              mixingSubtitle,
+              allocatedMixing.footerDaTronKg,
+              allocatedMixing.footerTonNgoaiKg,
+              allocatedMixing.allocatedFromNhuaTron ? allocatedMixing.nhuaTronKg : null,
+              true
+            )
+          : null}
         {renderTable(
           'NVL còn lại',
           'bg-white',
@@ -1112,8 +1117,6 @@ export default function ControlBoardBbMachineReportTable({
   const [confirmingPrint, setConfirmingPrint] = useState(false);
   const [printConfirmError, setPrintConfirmError] = useState('');
   const [printPreviewOpen, setPrintPreviewOpen] = useState(false);
-  const [printPreviewSyncing, setPrintPreviewSyncing] = useState(false);
-  const [printPreviewSyncMessage, setPrintPreviewSyncMessage] = useState('');
   const [printPreviewDataKey, setPrintPreviewDataKey] = useState(0);
   const pendingPrintSyncBumpRef = useRef(false);
   const [printStaffByOrder, setPrintStaffByOrder] = useState<Record<string, BbPrintConfirmSelection>>({});
@@ -2145,49 +2148,6 @@ export default function ControlBoardBbMachineReportTable({
       setSnapshotMessage(error instanceof Error ? error.message : 'Không đồng bộ được dữ liệu.');
     } finally {
       setAwaitingSyncReload(false);
-    }
-  };
-
-  /** Xem trước in: tải lại phiếu XK + Tổng kg + tính lại tab Báo cáo sản lượng. */
-  const syncPrintPreviewData = async () => {
-    if (printPreviewSyncing || isLoading || calculatingReport) return;
-    setPrintPreviewSyncing(true);
-    setPrintPreviewSyncMessage('Đang tải phiếu xuất kho, Thành phần SP và Tổng kg mới nhất...');
-    try {
-      pendingPrintSyncBumpRef.current = true;
-      if (onReloadSourceData) {
-        const fresh = await onReloadSourceData();
-        applyFreshToReportSource(fresh);
-      } else if (onReloadWarehouseData) {
-        const fresh = await onReloadWarehouseData();
-        applyFreshToReportSource(fresh);
-      } else {
-        pendingPrintSyncBumpRef.current = false;
-      }
-      const scope = buildCurrentSyncScope();
-      if (
-        scope.dateFrom &&
-        scope.shiftFilter &&
-        scope.shiftFilter !== 'all' &&
-        scope.machineFilter &&
-        scope.machineFilter !== 'all'
-      ) {
-        await calculateAndSaveReport(scope, true);
-      }
-      if (!pendingPrintSyncBumpRef.current) {
-        setPrintPreviewDataKey(key => key + 1);
-      }
-      setPrintPreviewSyncMessage(
-        'Đã đồng bộ — xuất kho, Báo cáo sản lượng và mục 3.1/3.2 dùng dữ liệu mới nhất.'
-      );
-      window.setTimeout(() => setPrintPreviewSyncMessage(''), 5000);
-    } catch (error) {
-      pendingPrintSyncBumpRef.current = false;
-      setPrintPreviewSyncMessage(
-        error instanceof Error ? error.message : 'Không đồng bộ được dữ liệu xuất kho.'
-      );
-    } finally {
-      setPrintPreviewSyncing(false);
     }
   };
 
@@ -4392,7 +4352,7 @@ export default function ControlBoardBbMachineReportTable({
                 Số liệu theo phiếu tồn đầu ca
               </p>
               <p className="mt-1 text-[15px] font-semibold leading-snug text-zinc-600">
-                «Tồn đầu kỳ»: Đã trộn = NHUA-TRON × tỉ lệ trộn thực tế; Tồn ngoài = SL TỒN từng mã trên CHI TIẾT TỒN ĐẦU CA.
+                Hiện NVL còn lại theo SL TỒN trên CHI TIẾT TỒN ĐẦU CA (đã ẩn bảng NVL trộn / tỉ lệ trộn).
               </p>
             </div>
           ) : activeTab === 'kiem_ton_cuoi_ca' ? (
@@ -4401,7 +4361,7 @@ export default function ControlBoardBbMachineReportTable({
                 Số liệu theo phiếu kiểm tồn cuối ca
               </p>
               <p className="mt-1 text-[15px] font-semibold leading-snug text-zinc-600">
-                Cùng tồn đầu ca — «Tồn cuối kỳ»: Đã trộn = NHUA-TRON × tỉ lệ trộn thực tế; Tồn ngoài = SL TỒN từng mã trên CHI TIẾT TỒN CUỐI CA.
+                Hiện NVL còn lại theo SL TỒN trên CHI TIẾT TỒN CUỐI CA (đã ẩn bảng NVL trộn / tỉ lệ trộn).
               </p>
             </div>
           ) : activeTab === 'danh_gia_tong_hop' ? (
@@ -5261,6 +5221,7 @@ export default function ControlBoardBbMachineReportTable({
                             <BbDauCaMaterialSplitTables
                               materialLines={group.materialLines || []}
                               onOpenTonFormula={setSelectedTonDauFormula}
+                              showMixingTable={false}
                             />
                           </td>
                         </tr>
@@ -5709,6 +5670,7 @@ export default function ControlBoardBbMachineReportTable({
                               tongColumnLabel="Tổng cuối"
                               chiTietSlipLabel="CHI TIẾT TỒN CUỐI CA"
                               onOpenTonFormula={setSelectedTonDauFormula}
+                              showMixingTable={false}
                             />
                           </td>
                         </tr>
@@ -6227,6 +6189,11 @@ export default function ControlBoardBbMachineReportTable({
                                                  </td>
                                                 <td className="px-3 py-2 text-right font-mono tabular-nums text-zinc-700">
                                                   {formatKg(row.xuatTrongCaKg, 2)}
+                                                  {row.exportQty ? (
+                                                    <span className="block text-[11px] font-normal text-zinc-500">
+                                                      ( {formatNumber(row.exportQty, 2)} )
+                                                    </span>
+                                                  ) : null}
                                                 </td>
                                                 <td className="px-3 py-2 text-right font-mono tabular-nums text-slate-700">
                                                   {formatKg(row.tonDauKg, 2)}
@@ -9947,37 +9914,15 @@ export default function ControlBoardBbMachineReportTable({
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-400">Xem trước khi in</p>
             <h4 className="text-sm font-semibold sm:text-base">Báo cáo kết quả theo từng lệnh sản xuất</h4>
             <p className="mt-0.5 text-xs font-semibold text-slate-300">
-              Sau khi sửa phiếu xuất kho / Tổng kg kho NVL → bấm Đồng bộ. Gõ lý do SP, ghi chú mục 5 → Lưu lý do DB → In.
+              Gõ lý do SP, ghi chú mục 5 → Lưu lý do DB → In.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {printPreviewSyncMessage ? (
-              <span
-                className="max-w-[320px] truncate text-xs font-semibold text-amber-200"
-                title={printPreviewSyncMessage}
-              >
-                {printPreviewSyncMessage}
-              </span>
-            ) : null}
             {lyDoSaveMessage ? (
               <span className="max-w-[280px] truncate text-xs font-semibold text-zinc-300" title={lyDoSaveMessage}>
                 {lyDoSaveMessage}
               </span>
             ) : null}
-            <button
-              type="button"
-              onClick={() => void syncPrintPreviewData()}
-              disabled={printPreviewSyncing || pendingPrint || isLoading}
-              className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-amber-400/70 bg-amber-600/90 px-4 text-xs font-semibold hover:bg-zinc-500 disabled:cursor-not-allowed disabled:opacity-50"
-              title="Tải lại phiếu xuất kho, Thành phần SP, Tổng kg — cập nhật Báo cáo sản lượng và mục 3.1/3.2"
-            >
-              {printPreviewSyncing ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCw className="h-4 w-4" />
-              )}
-              {printPreviewSyncing ? 'Đang đồng bộ...' : 'Đồng bộ'}
-            </button>
             <button
               type="button"
               onClick={() => void savePrintLyDoToDb()}

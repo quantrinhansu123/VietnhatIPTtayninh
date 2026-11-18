@@ -2000,7 +2000,15 @@ function BbMachineOrderPrintSheet({
                           </>
                         ) : null}
                       </td>
-                      <td className="shift-summary-print-num">{printNumber(row.exportKg, 2)}</td>
+                      <td className="shift-summary-print-num">
+                        {printNumber(row.exportKg, 2)}
+                        {row.exportQty ? (
+                          <>
+                            <br />
+                            ( {printNumber(row.exportQty, 2)} )
+                          </>
+                        ) : null}
+                      </td>
                       <td className="shift-summary-print-num">{printNumber(row.finishedKg, 2)}</td>
                       <td className="shift-summary-print-num">
                         {printNumber(row.cutLoiKg, 2)}

@@ -5328,7 +5328,7 @@ function bbTabRowMatchesOrderHeader(
   return false;
 }
 
-/** Gom kg từ dòng tab nguồn (tồn đầu / xuất kho / tồn cuối) theo lệnh + mã NVL. */
+/** Gom kg (và SL nếu có) từ dòng tab nguồn theo lệnh + mã NVL. */
 function buildKgMapsFromBbTabRowsForHeader(
   rows: Array<{
     ngay: string;
@@ -5337,6 +5337,7 @@ function buildKgMapsFromBbTabRowsForHeader(
     itemCode?: string;
     itemName?: string;
     weightKg?: number | null;
+    quantity?: number | null;
     matchedByOrder?: boolean;
   }>,
   header: { ngay: string; shift: string; orderCode: string },
@@ -5345,18 +5346,28 @@ function buildKgMapsFromBbTabRowsForHeader(
 ) {
   const byCode = new Map<string, number>();
   const byName = new Map<string, number>();
+  const qtyByCode = new Map<string, number>();
+  const qtyByName = new Map<string, number>();
   for (const row of rows) {
     if (!bbTabRowMatchesOrderHeader(row, header, { matchByDateOnly, includeUnmatchedExport })) continue;
     const kg = Number(row.weightKg);
-    if (!Number.isFinite(kg) || kg <= 0) continue;
+    const qty = Number(row.quantity);
+    const hasKg = Number.isFinite(kg) && kg > 0;
+    const hasQty = Number.isFinite(qty) && qty > 0;
+    if (!hasKg && !hasQty) continue;
     const code = normalizeMaterialCodeKey(row.itemCode || '');
     const name = String(row.itemName || '')
       .trim()
       .toUpperCase();
-    if (code) byCode.set(code, (byCode.get(code) || 0) + kg);
-    else if (name) byName.set(name, (byName.get(name) || 0) + kg);
+    if (code) {
+      if (hasKg) byCode.set(code, (byCode.get(code) || 0) + kg);
+      if (hasQty) qtyByCode.set(code, (qtyByCode.get(code) || 0) + qty);
+    } else if (name) {
+      if (hasKg) byName.set(name, (byName.get(name) || 0) + kg);
+      if (hasQty) qtyByName.set(name, (qtyByName.get(name) || 0) + qty);
+    }
   }
-  return { byCode, byName };
+  return { byCode, byName, qtyByCode, qtyByName };
 }
 
 /** Map kg tồn đầu/cuối = Đã trộn + Tồn ngoài (khớp cột Tổng trên tab), fallback weightKg. */
@@ -11340,9 +11351,22 @@ export function syncBbThucDungRowsXuatTrongNgayFromExportTab(input: {
     const maps = xuatMapsByHeaderKey.get(headerKey);
     if (!maps) return row;
     const lookedUp = lookupMachineNvlKgByMaterial(maps, row.materialCode, row.materialName);
+    const lookedUpQty = lookupMachineNvlKgByMaterial(
+      { byCode: maps.qtyByCode, byName: maps.qtyByName },
+      row.materialCode,
+      row.materialName
+    );
     // Live = 0 mà snapshot đã có TL xuất → giữ số cũ (tránh mất cột khi phiếu XK gắn lệch LSX).
     const xuatTrongCaKg = roundQty(
       lookedUp > 0 ? lookedUp : Number.isFinite(row.xuatTrongCaKg) && row.xuatTrongCaKg > 0 ? row.xuatTrongCaKg : 0,
+      4
+    );
+    const exportQty = roundQty(
+      lookedUpQty > 0
+        ? lookedUpQty
+        : Number.isFinite(row.exportQty) && (row.exportQty as number) > 0
+          ? (row.exportQty as number)
+          : 0,
       4
     );
     // Dòng 3.1 trộn: giữ TT SD đã phân bổ từ NHUA-TRON (lấy kho TRON nằm trong tổng đó).
@@ -11356,6 +11380,7 @@ export function syncBbThucDungRowsXuatTrongNgayFromExportTab(input: {
     return {
       ...row,
       xuatTrongCaKg,
+      exportQty,
       trongLuongDaTronKg: xuatTrongCaKg,
       weightKg,
       klThucTePlusLoiKg,

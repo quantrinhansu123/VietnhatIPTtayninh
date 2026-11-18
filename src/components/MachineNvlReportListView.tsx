@@ -4,8 +4,6 @@ import { createPortal } from 'react-dom';
 import { useTabAccess } from '../app/useTabAccess';
 import { formatNumber } from '../utils';
 import { waitForPrintImagesReady, enablePortraitPrintPage, disablePortraitPrintPage } from '../utils/printReady';
-import type { MixingReport } from './MixingReportForm';
-import { normalizeMixingReport } from '../lib/mixingReportModel';
 import {
   buildMachineNvlReportGroups,
   computeMachineNvlDauCaDiscrepancy,
@@ -22,11 +20,6 @@ import {
   type MachineNvlSavedLine,
   type MachineNvlSavedReport
 } from '../utils/machineNvlReports';
-import {
-  buildMachineNvlAllocatedMixingTable,
-  buildMachineNvlMixingRatioRows,
-  type MachineNvlMixingRatioRow
-} from '../utils/machineNvlMixingRatio';
 import {
   MachineNvlPrintBatch,
   savedReportToMachineNvlPrintReport,
@@ -223,233 +216,17 @@ function MachineNvlDetailLinesTable({
   );
 }
 
-function formatPercentCell(value: number | null | undefined) {
-  if (value === null || value === undefined || !Number.isFinite(value)) return '—';
-  return `${formatNumber(value, 4)}%`;
-}
-
-function MachineNvlMixingRatioTable({
-  rows,
-  sourceLabel
-}: {
-  rows: MachineNvlMixingRatioRow[];
-  sourceLabel?: string;
-}) {
-  const totalKl = rows.reduce((sum, row) => sum + (row.klThucTe > 0 ? row.klThucTe : 0), 0);
-  const hasActual = rows.some(row => row.tiLeThucTePercent != null);
-
-  return (
-    <div className="overflow-hidden rounded-xl border border-orange-200">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-orange-200 bg-orange-50 px-3 py-2">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-wider text-orange-800">
-            Bảng tỉ lệ trộn
-          </p>
-          {sourceLabel ? (
-            <p className="mt-0.5 text-[10px] font-semibold text-orange-700/80">{sourceLabel}</p>
-          ) : null}
-        </div>
-        <p className="font-mono text-[11px] font-black text-orange-900">
-          {rows.length} NVL
-          {totalKl > 0 ? ` · ${formatNumber(totalKl, 3)} kg` : ''}
-        </p>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[640px] border-collapse text-left text-[11px] sm:text-xs">
-          <thead className={`${TABLE_HEAD_CLASS} text-[9px] uppercase tracking-wider sm:text-[10px]`}>
-            <tr>
-              <th className="px-2.5 py-2.5 font-semibold">STT</th>
-              <th className="px-2.5 py-2.5 font-semibold">Mã NVL</th>
-              <th className="px-2.5 py-2.5 font-semibold">Tên NVL</th>
-              <th className="px-2.5 py-2.5 font-semibold">ĐVT</th>
-              <th
-                className="px-2.5 py-2.5 text-right font-semibold"
-                title="Tỉ lệ định mức trên phiếu phối trộn"
-              >
-                Tỉ lệ ĐM (%)
-              </th>
-              <th
-                className="px-2.5 py-2.5 text-right font-semibold"
-                title="Tỉ lệ trộn thực tế = KL NVL ÷ tổng KL × 100 (ngày · ca · máy)"
-              >
-                Tỉ lệ thực tế (%)
-              </th>
-              <th className="px-2.5 py-2.5 text-right font-semibold">KL thực tế</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-zinc-100 bg-white">
-            {rows.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="px-3 py-6 text-center font-semibold text-zinc-400">
-                  Chưa có phiếu phối trộn khớp ngày · ca · máy.
-                </td>
-              </tr>
-            ) : (
-              rows.map((row, index) => (
-                <tr key={`${row.maNvl}-${row.tenNvl}-${index}`} className="hover:bg-orange-50/40">
-                  <td className="px-2.5 py-2 font-mono font-bold text-[#ef1b2d]">{index + 1}</td>
-                  <td className="px-2.5 py-2 font-mono font-semibold text-zinc-800">{row.maNvl || '—'}</td>
-                  <td className="px-2.5 py-2 font-semibold text-zinc-700">{row.tenNvl || '—'}</td>
-                  <td className="px-2.5 py-2 text-zinc-600">{row.donVi || '—'}</td>
-                  <td className="px-2.5 py-2 text-right font-mono text-zinc-700">
-                    {formatPercentCell(row.tiLeDinhMucPercent)}
-                  </td>
-                  <td className="px-2.5 py-2 text-right font-mono font-black text-orange-800">
-                    {formatPercentCell(row.tiLeThucTePercent)}
-                  </td>
-                  <td className="px-2.5 py-2 text-right font-mono font-bold text-zinc-800">
-                    {row.klThucTe > 0 ? formatNumber(row.klThucTe, 3) : '—'}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-          {rows.length > 0 ? (
-            <tfoot className="border-t border-orange-100 bg-orange-50/60">
-              <tr>
-                <td
-                  colSpan={5}
-                  className="px-2.5 py-2.5 text-right text-[10px] font-black uppercase tracking-wider text-zinc-500"
-                >
-                  Tổng tỉ lệ thực tế
-                </td>
-                <td className="px-2.5 py-2.5 text-right font-mono text-sm font-black text-orange-800">
-                  {hasActual ? '100%' : '—'}
-                </td>
-                <td className="px-2.5 py-2.5 text-right font-mono text-sm font-black text-zinc-800">
-                  {totalKl > 0 ? `${formatNumber(totalKl, 3)} kg` : '—'}
-                </td>
-              </tr>
-            </tfoot>
-          ) : null}
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function MachineNvlAllocatedMixingTable({
-  report,
-  ratioRows,
-  weightCatalog
-}: {
-  report: MachineNvlSavedReport;
-  ratioRows: MachineNvlMixingRatioRow[];
-  weightCatalog?: WarehouseWeightCatalogItem[] | null;
-}) {
-  const allocated = useMemo(
-    () => buildMachineNvlAllocatedMixingTable(report, ratioRows, weightCatalog),
-    [report, ratioRows, weightCatalog]
-  );
-  const tonKyLabel = report.reportKind === 'dau_ca' ? 'Tồn đầu kỳ' : 'Tồn cuối kỳ';
-  const tongLabel = report.reportKind === 'dau_ca' ? 'Tổng đầu' : 'Tổng cuối';
-
-  if (allocated.rows.length === 0) return null;
-
-  return (
-    <div className="overflow-hidden rounded-xl border border-zinc-200">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 bg-[#e8f0ed] px-3 py-2">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-wider text-zinc-800">
-            NVL trộn · {tonKyLabel}
-          </p>
-          <p className="mt-0.5 text-[10px] font-semibold text-zinc-600">
-            {allocated.allocatedFromNhuaTron
-              ? `Đã trộn = NHUA-TRON (${formatNumber(allocated.nhuaTronKg, 3)} kg) × tỉ lệ thực tế · Tồn ngoài = SL TỒN từng mã`
-              : 'Chưa có NHUA-TRON — hiển thị SL TỒN từng mã kèm tỉ lệ trộn (nếu có)'}
-          </p>
-        </div>
-        <p className="font-mono text-[11px] font-black text-emerald-800">
-          {formatNumber(allocated.totalKg, 4)} kg
-        </p>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[720px] border-collapse text-left text-[11px] sm:text-xs">
-          <thead className={`${TABLE_HEAD_CLASS} text-[9px] uppercase tracking-wider sm:text-[10px]`}>
-            <tr>
-              <th className="px-2.5 py-2.5 font-semibold">Mã NVL</th>
-              <th className="px-2.5 py-2.5 font-semibold">Tên NVL</th>
-              <th className="px-2.5 py-2.5 font-semibold">ĐVT</th>
-              <th className="px-2.5 py-2.5 text-right font-semibold">SL</th>
-              <th className="px-2.5 py-2.5 text-right font-semibold">Tỉ lệ %</th>
-              <th className="px-2.5 py-2.5 text-right font-semibold">Đã trộn</th>
-              <th className="px-2.5 py-2.5 text-right font-semibold">Tồn ngoài</th>
-              <th className="px-2.5 py-2.5 text-right font-semibold">{tongLabel}</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-zinc-100 bg-white">
-            {allocated.rows.map((row, index) => (
-              <tr key={`${row.maNvl}-${index}`} className="hover:bg-zinc-50/80">
-                <td className="px-2.5 py-2 font-mono font-semibold text-zinc-800">{row.maNvl || '—'}</td>
-                <td className="px-2.5 py-2 font-semibold text-zinc-700">{row.tenNvl || '—'}</td>
-                <td className="px-2.5 py-2 text-zinc-600">{row.donVi || '—'}</td>
-                <td className="px-2.5 py-2 text-right font-mono text-zinc-700">
-                  {row.slTon > 0 ? formatNumber(row.slTon, 3) : '—'}
-                </td>
-                <td className="px-2.5 py-2 text-right font-mono font-black text-orange-800">
-                  {formatPercentCell(row.tiLePercent)}
-                </td>
-                <td className="px-2.5 py-2 text-right font-mono text-zinc-700">
-                  {row.daTronKg > 0 ? formatNumber(row.daTronKg, 4) : '—'}
-                </td>
-                <td className="px-2.5 py-2 text-right font-mono text-zinc-700">
-                  {row.tonNgoaiKg > 0 ? formatNumber(row.tonNgoaiKg, 4) : '—'}
-                </td>
-                <td className="px-2.5 py-2 text-right font-mono font-black text-emerald-800">
-                  {row.tongKg > 0 ? formatNumber(row.tongKg, 4) : '—'}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot className="border-t border-zinc-200 bg-[#e8f0ed]/50">
-            <tr>
-              <td
-                colSpan={4}
-                className="px-2.5 py-2.5 text-right text-[10px] font-black uppercase tracking-wider text-zinc-500"
-              >
-                Tổng
-              </td>
-              <td />
-              <td className="px-2.5 py-2.5 text-right font-mono text-sm font-black text-zinc-800">
-                {allocated.totalDaTronKg > 0 ? formatNumber(allocated.totalDaTronKg, 4) : '—'}
-              </td>
-              <td className="px-2.5 py-2.5 text-right font-mono text-sm font-black text-zinc-800">
-                {allocated.totalTonNgoaiKg > 0 ? formatNumber(allocated.totalTonNgoaiKg, 4) : '—'}
-              </td>
-              <td className="px-2.5 py-2.5 text-right font-mono text-sm font-black text-emerald-800">
-                {formatNumber(allocated.totalKg, 4)}
-              </td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-    </div>
-  );
-}
-
 function MachineNvlReportDetailBlocks({
   report,
-  mixingReports,
   weightCatalog
 }: {
   report: MachineNvlSavedReport;
-  mixingReports: MixingReport[];
   weightCatalog?: WarehouseWeightCatalogItem[] | null;
 }) {
   const isDauCa = report.reportKind === 'dau_ca';
   const { nvlTron, vatTuKhac } = useMemo(
     () => splitMachineNvlLinesByMaterialGroup(report.lines),
     [report.lines]
-  );
-  const ratioRows = useMemo(
-    () =>
-      buildMachineNvlMixingRatioRows(mixingReports, {
-        ngay: report.ngay,
-        ca: report.ca,
-        maMay: report.maMay,
-        tenMay: report.tenMay
-      }),
-    [mixingReports, report.ngay, report.ca, report.maMay, report.tenMay]
   );
 
   return (
@@ -460,17 +237,6 @@ function MachineNvlReportDetailBlocks({
         lines={nvlTron}
         isDauCa={isDauCa}
         emptyLabel="Không có vật tư trộn (nhựa)."
-        weightCatalog={weightCatalog}
-      />
-      <MachineNvlMixingRatioTable
-        rows={ratioRows}
-        sourceLabel={`Nguồn: báo cáo phối trộn ${report.ngay} · ${report.ca || '—'} · ${
-          report.tenMay || report.maMay || '—'
-        }`}
-      />
-      <MachineNvlAllocatedMixingTable
-        report={report}
-        ratioRows={ratioRows}
         weightCatalog={weightCatalog}
       />
       <MachineNvlDetailLinesTable
@@ -492,8 +258,7 @@ function MachineNvlReportDetailModal({
   onPrint,
   canEdit = false,
   discrepancy = null,
-  weightCatalog = null,
-  mixingReports = []
+  weightCatalog = null
 }: {
   report: MachineNvlSavedReport;
   onClose: () => void;
@@ -502,7 +267,6 @@ function MachineNvlReportDetailModal({
   canEdit?: boolean;
   discrepancy?: MachineNvlDiscrepancy | null;
   weightCatalog?: WarehouseWeightCatalogItem[] | null;
-  mixingReports?: MixingReport[];
 }) {
   const isDauCa = report.reportKind === 'dau_ca';
   const totalKg = reportTotal(report, weightCatalog);
@@ -588,7 +352,6 @@ function MachineNvlReportDetailModal({
 
           <MachineNvlReportDetailBlocks
             report={report}
-            mixingReports={mixingReports}
             weightCatalog={weightCatalog}
           />
 
@@ -657,8 +420,7 @@ function MachineNvlSection({
   canEdit = false,
   canDelete = false,
   discrepancies,
-  weightCatalog = null,
-  mixingReports = []
+  weightCatalog = null
 }: {
   kind: MachineNvlReportKind;
   title: string;
@@ -680,7 +442,6 @@ function MachineNvlSection({
   canDelete?: boolean;
   discrepancies?: Map<string, MachineNvlDiscrepancy>;
   weightCatalog?: WarehouseWeightCatalogItem[] | null;
-  mixingReports?: MixingReport[];
 }) {
   const reportIds = useMemo(
     () =>
@@ -929,7 +690,6 @@ function MachineNvlSection({
 
                             <MachineNvlReportDetailBlocks
                               report={report}
-                              mixingReports={mixingReports}
                               weightCatalog={weightCatalog}
                             />
                           </div>
@@ -998,7 +758,6 @@ export default function MachineNvlReportListView({
   const [viewingReport, setViewingReport] = useState<MachineNvlSavedReport | null>(null);
   const [listTab, setListTab] = useState<MachineNvlReportKind>('dau_ca');
   const [weightCatalog, setWeightCatalog] = useState<WarehouseWeightCatalogItem[]>([]);
-  const [mixingReports, setMixingReports] = useState<MixingReport[]>([]);
 
   const shiftOptions = useMemo(() => getProductionShiftOptions(shiftSettings), [shiftSettings]);
 
@@ -1072,19 +831,13 @@ export default function MachineNvlReportListView({
     if (tuNgay) params.set('tu_ngay', tuNgay);
     if (denNgay) params.set('den_ngay', denNgay);
 
-    const mixingParams = new URLSearchParams();
-    if (tuNgay) mixingParams.set('tu_ngay', tuNgay);
-    if (denNgay) mixingParams.set('den_ngay', denNgay);
-
-    const [dauCaRes, cuoiCaRes, mixingRes] = await Promise.all([
+    const [dauCaRes, cuoiCaRes] = await Promise.all([
       fetch(`/api/bao-cao-may-nvl-ton?${params.toString()}&loai_bao_cao=dau_ca`),
-      fetch(`/api/bao-cao-may-nvl-ton?${params.toString()}&loai_bao_cao=cuoi_ca`),
-      fetch(`/api/bao-cao-phoi-tron?${mixingParams.toString()}`)
+      fetch(`/api/bao-cao-may-nvl-ton?${params.toString()}&loai_bao_cao=cuoi_ca`)
     ]);
-    const [dauCaData, cuoiCaData, mixingData] = await Promise.all([
+    const [dauCaData, cuoiCaData] = await Promise.all([
       dauCaRes.json().catch(() => ({})),
-      cuoiCaRes.json().catch(() => ({})),
-      mixingRes.json().catch(() => ({}))
+      cuoiCaRes.json().catch(() => ({}))
     ]);
 
     if (!dauCaRes.ok || !cuoiCaRes.ok) {
@@ -1097,14 +850,6 @@ export default function MachineNvlReportListView({
 
     setDauCaReports(normalizeMachineNvlReports(dauCaData));
     setCuoiCaReports(normalizeMachineNvlReports(cuoiCaData));
-    if (mixingRes.ok) {
-      const list = Array.isArray((mixingData as { reports?: unknown }).reports)
-        ? ((mixingData as { reports: Record<string, unknown>[] }).reports)
-        : [];
-      setMixingReports(list.map(item => normalizeMixingReport(item)));
-    } else {
-      setMixingReports([]);
-    }
   };
 
   useEffect(() => {
@@ -1450,7 +1195,6 @@ export default function MachineNvlReportListView({
           canDelete={canDelete}
           discrepancies={dauCaDiscrepancies}
           weightCatalog={weightCatalog}
-          mixingReports={mixingReports}
         />
       ) : (
         <MachineNvlSection
@@ -1473,7 +1217,6 @@ export default function MachineNvlReportListView({
           canEdit={canEdit}
           canDelete={canDelete}
           weightCatalog={weightCatalog}
-          mixingReports={mixingReports}
         />
       )}
 
@@ -1485,7 +1228,6 @@ export default function MachineNvlReportListView({
           onPrint={handlePrint}
           canEdit={canEdit}
           weightCatalog={weightCatalog}
-          mixingReports={mixingReports}
           discrepancy={
             viewingReport.reportKind === 'dau_ca' ? dauCaDiscrepancies.get(viewingReport.id) ?? null : null
           }

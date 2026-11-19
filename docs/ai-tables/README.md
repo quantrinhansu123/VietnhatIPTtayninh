@@ -96,6 +96,7 @@ Quy đổi vật liệu trong hub `/danh-sach-bao-cao`: [quy_doi_vat_lieu.md](./
 | `bb_giai_trinh` | *(giải trình /phan-tich-tu-dong)* | [bb_giai_trinh.md](./bb_giai_trinh.md) |
 | `bb_bao_cao_tinh_toan` | *(snapshot tính toán BB)* | [bb_bao_cao_tinh_toan.md](./bb_bao_cao_tinh_toan.md) |
 | `phan_cong_cv` | `/ke-hoach-san-xuat` · Loại **Kế hoạch CV** | [phan_cong_cv.md](./phan_cong_cv.md) |
+| *(admin)* `quan_tri_db` | `/quan-tri-db` — duyệt bảng / SQL mọi Supabase | [quan_tri_db.md](./quan_tri_db.md) |
 
 ## File dùng chung (chỉ khi cần)
 

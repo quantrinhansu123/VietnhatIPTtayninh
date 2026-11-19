@@ -77,6 +77,7 @@ import { OrdersPanel, OrderDetailPage } from './features/don-hang';
 import { ProductionOrdersPanel, ProductionOrderDetailPage } from './features/lenh-sx';
 import { ProductionPlanHistoryPanel } from './features/ke-hoach-san-xuat';
 import { SettingsPanel } from './features/cai-dat-thoi-gian';
+import { QuanTriDbPanel } from './features/quan-tri-db';
 import { DashboardWindow } from './features/dashboard';
 import { ControlBoardPanel } from './features/control-board';
 import { HumanResourcesPanel } from './features/nhan-su';
@@ -897,7 +898,7 @@ export default function App() {
                 transition={{ duration: 0.15 }}
                 className="space-y-3"
               >
-                <MenuPageHeader title="Quản trị" desc="Dashboard, báo cáo mới, người dùng/phân quyền, cấu hình hệ thống và danh mục dùng chung." />
+                <MenuPageHeader title="Quản trị" desc="Dashboard, báo cáo mới, người dùng/phân quyền, cấu hình hệ thống, quản trị DB và danh mục dùng chung." />
                 <FourStepMenuFlow items={filterMenuItems(ADMIN_MENU_ITEMS)} onNavigate={navigateToTab} showFlow={false} />
               </motion.div>
             ) : activeTab === 'production-reports' ? (
@@ -1831,6 +1832,16 @@ export default function App() {
                 transition={{ duration: 0.15 }}
               >
                 <SettingsPanel onBack={() => goBack('quan-tri')} />
+              </motion.div>
+            ) : activeTab === 'db-admin' ? (
+              <motion.div
+                key="db-admin"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.15 }}
+              >
+                <QuanTriDbPanel onBack={() => goBack('quan-tri')} />
               </motion.div>
             ) : activeTab === 'bao-cao-ngay' ? (
               <BaoCaoNgayPanel onBack={() => goBack('quan-tri')} />

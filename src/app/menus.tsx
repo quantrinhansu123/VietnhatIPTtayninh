@@ -55,7 +55,7 @@ import {
   ClipboardList, Factory, LayoutDashboard, FlaskConical, ArrowDownToLine, PackageMinus, Scale, Settings, Receipt,
   CalendarDays, ChevronRight, ChevronLeft, ClipboardCheck, PackageX, BarChart3, Activity, Truck,
   ArrowRight, ArrowDown, ArrowUpRight, ShieldCheck, UserRound, Warehouse, Ban, ArrowLeftRight, ScanBarcode, BadgeCheck,
-  Sparkles, X, Settings2, Users, Store, Calculator, GanttChart, Wrench
+  Sparkles, X, Settings2, Users, Store, Calculator, GanttChart, Wrench, Database
 } from 'lucide-react';
 import type { AppTab } from '../routes';
 import { hubHasAllowedChild, resolveAccessTab } from './tabAccess';
@@ -396,6 +396,13 @@ export const ADMIN_MENU_ITEMS: MenuCardConfig[] = [
     icon: Settings,
     icon3d: toolbox3d,
     tab: 'settings'
+  },
+  {
+    title: 'Quản trị DB',
+    desc: 'Duyệt bảng và chạy SQL trên các project Supabase đã cấu hình.',
+    icon: Database,
+    icon3d: cardIndexDividers3d,
+    tab: 'db-admin'
   },
   {
     title: 'Danh mục dùng chung',
@@ -1001,6 +1008,7 @@ export const PRIMARY_NAV_GROUPS: {
       { label: 'Biểu đồ TH', tab: 'bieu-do-th' },
       { label: 'Người dùng và phân quyền', tab: 'settings' },
       { label: 'Cấu hình hệ thống', tab: 'settings' },
+      { label: 'Quản trị DB', tab: 'db-admin' },
       { label: 'Danh mục dùng chung', tab: 'quan-tri', disabled: true }
     ]
   },
@@ -1152,6 +1160,7 @@ export const TAB_TITLE_MAP: Record<string, { group: string; sub: string }> = {
   'ton-kho': { group: 'Kho', sub: 'Tồn kho' },
   'kiem-soat-ton': { group: 'Kho', sub: 'Kiểm soát tồn' },
   'settings': { group: 'Quản trị', sub: 'Người dùng và phân quyền / Cấu hình hệ thống' },
+  'db-admin': { group: 'Quản trị', sub: 'Quản trị DB' },
   'hr': { group: 'HCNS', sub: 'Hồ sơ nhân sự' },
   'vehicles': { group: 'Trang chủ', sub: 'Lái xe' },
   'orders': { group: 'Kinh doanh', sub: 'Đơn đặt hàng' },

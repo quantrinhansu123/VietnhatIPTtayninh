@@ -15,6 +15,7 @@ import { normalizeAssignablePositions } from './src/features/cai-dat-thoi-gian/s
 import { nextProductionOrderCode } from './src/utils/productionOrderCode';
 import { canonicalizeMaterialCodePayload } from './src/utils/materialCodeAliases';
 import { materialConversionRouter } from './src/features/quy-doi-vat-lieu/server';
+import { buildSupabasePgUrl, dbAdminRouter } from './src/features/quan-tri-db/server';
 import { emptyAcceptanceWeights, parseAcceptanceWeightSnapshot } from './src/utils/acceptanceWeightSnapshot';
 
 /** Cổng khi chạy thêm một kênh. Đọc trước dotenv để file .env không ghi đè. */
@@ -11282,6 +11283,93 @@ export function createApp() {
   });
 
   app.use('/api/quy-doi-vat-lieu', materialConversionRouter(supabase));
+
+  {
+    const mainPgUrl =
+      process.env.SUPABASE_DB_URL?.trim() ||
+      (SUPABASE_URL && process.env.SUPABASE_DB_PASSWORD
+        ? buildSupabasePgUrl(SUPABASE_URL, process.env.SUPABASE_DB_PASSWORD.trim())
+        : null);
+    const weighingPgUrl =
+      process.env.SUPABASE_WEIGHING_DB_URL?.trim() ||
+      (SUPABASE_WEIGHING_URL && process.env.SUPABASE_WEIGHING_DB_PASSWORD
+        ? buildSupabasePgUrl(SUPABASE_WEIGHING_URL, process.env.SUPABASE_WEIGHING_DB_PASSWORD.trim())
+        : null);
+    const kiemKhoPgUrl =
+      process.env.SUPABASE_KIEM_KHO_DB_URL?.trim() ||
+      (SUPABASE_KIEM_KHO_URL && process.env.SUPABASE_KIEM_KHO_DB_PASSWORD
+        ? buildSupabasePgUrl(SUPABASE_KIEM_KHO_URL, process.env.SUPABASE_KIEM_KHO_DB_PASSWORD.trim())
+        : null);
+    const khoPgUrl =
+      process.env.SUPABASE_KHO_DB_URL?.trim() ||
+      (SUPABASE_KHO_URL && process.env.SUPABASE_KHO_DB_PASSWORD
+        ? buildSupabasePgUrl(SUPABASE_KHO_URL, process.env.SUPABASE_KHO_DB_PASSWORD.trim())
+        : null);
+    const khoChoPgUrl =
+      process.env.SUPABASE_KHO_CHO_DB_URL?.trim() ||
+      (SUPABASE_KHO_CHO_URL && process.env.SUPABASE_KHO_CHO_DB_PASSWORD
+        ? buildSupabasePgUrl(SUPABASE_KHO_CHO_URL, process.env.SUPABASE_KHO_CHO_DB_PASSWORD.trim())
+        : null);
+    const tonPgUrl =
+      process.env.SUPABASE_TON_DB_URL?.trim() ||
+      (SUPABASE_TON_URL && process.env.SUPABASE_TON_DB_PASSWORD
+        ? buildSupabasePgUrl(SUPABASE_TON_URL, process.env.SUPABASE_TON_DB_PASSWORD.trim())
+        : null);
+
+    app.use(
+      '/api/db-admin',
+      dbAdminRouter([
+        {
+          id: 'he-thong',
+          label: SUPABASE_MAIN_DB_LABEL,
+          url: SUPABASE_URL || '',
+          key: SUPABASE_KEY || '',
+          client: supabase,
+          pgUrl: mainPgUrl
+        },
+        {
+          id: 'phieu-can',
+          label: SUPABASE_WEIGHING_DB_LABEL,
+          url: SUPABASE_WEIGHING_URL,
+          key: SUPABASE_WEIGHING_KEY,
+          client: supabaseWeighing,
+          pgUrl: weighingPgUrl
+        },
+        {
+          id: 'kiem-kho',
+          label: SUPABASE_KIEM_KHO_DB_LABEL,
+          url: SUPABASE_KIEM_KHO_URL,
+          key: SUPABASE_KIEM_KHO_KEY,
+          client: supabaseKiemKho,
+          pgUrl: kiemKhoPgUrl
+        },
+        {
+          id: 'kho',
+          label: SUPABASE_KHO_DB_LABEL,
+          url: SUPABASE_KHO_URL,
+          key: SUPABASE_KHO_KEY,
+          client: supabaseKho,
+          pgUrl: khoPgUrl
+        },
+        {
+          id: 'kho-cho',
+          label: 'kho-cho',
+          url: SUPABASE_KHO_CHO_URL,
+          key: SUPABASE_KHO_CHO_KEY,
+          client: supabaseKhoCho,
+          pgUrl: khoChoPgUrl
+        },
+        {
+          id: 'ton',
+          label: SUPABASE_TON_DB_LABEL,
+          url: SUPABASE_TON_URL,
+          key: SUPABASE_TON_KEY,
+          client: supabaseTon,
+          pgUrl: tonPgUrl
+        }
+      ])
+    );
+  }
 
   app.get('/api/danh-sach-may', async (_req, res) => {
     if (!supabase && !supabaseWeighing) {

@@ -57,7 +57,8 @@ export type TableId =
   | 'bb_phan_tich_danh_gia'
   | 'bb_giai_trinh'
   | 'bb_bao_cao_tinh_toan'
-  | 'phan_cong_cv';
+  | 'phan_cong_cv'
+  | 'quan_tri_db';
 
 export interface TableRegistryEntry {
   table: TableId;
@@ -570,6 +571,17 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
       'src/features/cai-dat-thoi-gian/staffAssignments.ts',
       'src/features/nhan-su/menuViews.ts'
     ]
+  },
+  quan_tri_db: {
+    table: 'quan_tri_db',
+    label: 'Quản trị DB (Supabase)',
+    sql: [],
+    apiPrefix: '/api/db-admin',
+    serverLines: 'app.use(/api/db-admin) + src/features/quan-tri-db/server.ts',
+    appTab: 'db-admin',
+    appLines: 'src/features/quan-tri-db/index.tsx',
+    components: ['src/features/quan-tri-db/server.ts'],
+    utils: []
   },
   bao_cao_phoi_tron: {
     table: 'bao_cao_phoi_tron',

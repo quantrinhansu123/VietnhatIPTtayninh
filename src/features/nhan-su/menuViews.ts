@@ -30,7 +30,8 @@ export const STAFF_MENU_VIEW_TREE: StaffViewGroup[] = [
       { tab: 'dashboard-auto', label: 'Báo cáo mới' },
       { tab: 'bao-cao-ngay', label: 'Báo cáo ngày' },
       { tab: 'bieu-do-th', label: 'Biểu đồ TH' },
-      { tab: 'settings', label: 'Cài đặt / phân quyền' }
+      { tab: 'settings', label: 'Cài đặt / phân quyền' },
+      { tab: 'db-admin', label: 'Quản trị DB' }
     ]
   },
   {

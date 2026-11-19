@@ -4287,7 +4287,8 @@ export function WarehouseSlipPanel({
       tenKho: warehouseName.trim(),
       ngayPhieu: slipDate,
       lyDo: savedReason,
-      ghiChu: note.trim(),
+      // Có thẻ [LXH:…] để phiếu NVL tách ra từ phiếu TP cũng gắn đúng lệnh xuất hàng.
+      ghiChu: noteWithOrderTag,
       nguoiLap: createdBy.trim(),
       ca: shiftLabelForSave || null,
       may: showWarehouseShiftAndMachine ? machine.trim() || null : null,

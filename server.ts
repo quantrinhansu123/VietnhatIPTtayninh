@@ -7997,6 +7997,30 @@ async function saveWarehouseSlipToKho(
   return { header, lines: parsed.items.length };
 }
 
+/**
+ * Phiếu xuất kho thành phẩm có thể lẫn mã NVL/vật tư (vd túi VT-TUI03 trên lệnh xuất hàng).
+ * Mã nằm trong kho_nvl mà không có trong san_pham → tách sang phiếu xuất kho NVL `<mã phiếu>-NVL`.
+ */
+async function splitNvlItemsFromProductExport<T extends { code: string }>(items: T[]) {
+  const codes = [...new Set(items.map(item => String(item.code || '').trim()).filter(Boolean))];
+  if (!supabase || !codes.length) return { productItems: items, nvlItems: [] as T[], nvlKho: null as string | null };
+  const [nvlRes, productRes] = await Promise.all([
+    supabase.from(SUPABASE_MATERIALS_TABLE).select('ma_npl, ten_kho').in('ma_npl', codes),
+    supabase.from(SUPABASE_PRODUCTS_TABLE).select('ma_sp').in('ma_sp', codes)
+  ]);
+  if (nvlRes.error || productRes.error) return { productItems: items, nvlItems: [] as T[], nvlKho: null as string | null };
+  const productKeys = new Set((productRes.data || []).map(row => normalizeWarehouseMovementCode(row.ma_sp)));
+  const nvlKhoByKey = new Map<string, string>();
+  for (const row of nvlRes.data || []) {
+    const key = normalizeWarehouseMovementCode(row.ma_npl);
+    if (!productKeys.has(key)) nvlKhoByKey.set(key, String(row.ten_kho || '').trim());
+  }
+  const isNvl = (item: T) => nvlKhoByKey.has(normalizeWarehouseMovementCode(item.code));
+  const nvlItems = items.filter(isNvl);
+  const firstKho = nvlItems.map(item => nvlKhoByKey.get(normalizeWarehouseMovementCode(item.code))).find(Boolean) || null;
+  return { productItems: items.filter(item => !isNvl(item)), nvlItems, nvlKho: firstKho || 'Kho NVL' };
+}
+
 function generateWarehouseSlipCode(loaiPhieu: 'nhap' | 'xuat', machineName = '') {
   const now = new Date();
   const date = now.toISOString().slice(0, 10).replace(/-/g, '');
@@ -14177,7 +14201,7 @@ export function createApp() {
           const { data: rows, error: lineError } = await khoDb
             .from('xuat_kho')
             .select('ma_phieu, ma_sp, ma_sp_quet, so_luong')
-            .eq('loai', 'san_pham')
+            .in('loai', ['san_pham', 'nvl'])
             .in('ma_phieu', chunk)
             .range(from, from + 999);
           if (lineError) return res.status(500).json({ error: lineError.message });
@@ -14776,10 +14800,25 @@ export function createApp() {
             return res.status(409).json({ error: 'Bao cao nay da duoc nhap kho.' });
           }
         }
+        let nvlSlipCode = '';
+        if (parsed.loaiPhieu === 'xuat' && parsed.loaiKho === 'san_pham') {
+          const split = await splitNvlItemsFromProductExport(parsed.items);
+          if (split.nvlItems.length) {
+            nvlSlipCode = `${slipCode}-NVL`;
+            const nvlNote = `${parsed.ghiChu || ''} [TP:${slipCode}]`.trim();
+            await saveWarehouseSlipToKho(
+              { ...parsed, loaiKho: 'nvl', tenKho: split.nvlKho, ghiChu: nvlNote, items: split.nvlItems },
+              nvlSlipCode,
+              parsed.treo ? 'chua_chot' : 'da_chot'
+            );
+            parsed.items = split.productItems;
+          }
+        }
         await saveWarehouseSlipToKho(parsed, slipCode, parsed.treo ? 'chua_chot' : 'da_chot');
         const rows = await loadWarehouseMovementsFromKho({ loaiPhieu: parsed.loaiPhieu, maPhieu: slipCode });
-        await syncCodes(rows);
-        return res.status(201).json({ success: true, slipCode, movements: rows, qrCodes: [], qrQuantity: 0 });
+        const nvlRows = nvlSlipCode ? await loadWarehouseMovementsFromKho({ loaiPhieu: 'xuat', maPhieu: nvlSlipCode }) : [];
+        await syncCodes([...rows, ...nvlRows]);
+        return res.status(201).json({ success: true, slipCode, nvlSlipCode: nvlSlipCode || undefined, movements: rows, qrCodes: [], qrQuantity: 0 });
       }
       const codeMatch = path.match(/^\/([^/]+)\/(xac-nhan-treo|danh-dau-da-in)$/);
       if (req.method === 'POST' && codeMatch) {

@@ -95,9 +95,12 @@ export function RowActionsMenu({ children, label = 'Thao tác', colorful = false
   useEffect(() => {
     if (!open) return;
 
-    const close = (event: MouseEvent) => {
+    // Dùng pointerdown + kiểm tra contains (không đóng sớm trước click).
+    // Tránh đóng khi scroll trong bảng — chỉ neo lại vị trí; đóng khi scroll làm trigger lệch xa.
+    const closeOutside = (event: PointerEvent) => {
       const target = event.target as Node;
-      if (!menuRef.current?.contains(target) && !triggerRef.current?.contains(target)) setOpen(false);
+      if (menuRef.current?.contains(target) || triggerRef.current?.contains(target)) return;
+      setOpen(false);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -105,17 +108,34 @@ export function RowActionsMenu({ children, label = 'Thao tác', colorful = false
         triggerRef.current?.focus();
       }
     };
-    const closeOnViewportChange = () => setOpen(false);
+    const onViewportChange = () => {
+      const trigger = triggerRef.current;
+      if (!trigger) {
+        setOpen(false);
+        return;
+      }
+      const rect = trigger.getBoundingClientRect();
+      const stillVisible =
+        rect.bottom > VIEWPORT_GAP &&
+        rect.top < window.innerHeight - VIEWPORT_GAP &&
+        rect.right > VIEWPORT_GAP &&
+        rect.left < window.innerWidth - VIEWPORT_GAP;
+      if (!stillVisible) {
+        setOpen(false);
+        return;
+      }
+      positionMenu();
+    };
 
-    document.addEventListener('mousedown', close);
+    document.addEventListener('pointerdown', closeOutside);
     document.addEventListener('keydown', closeOnEscape);
-    window.addEventListener('resize', closeOnViewportChange);
-    window.addEventListener('scroll', closeOnViewportChange, true);
+    window.addEventListener('resize', onViewportChange);
+    window.addEventListener('scroll', onViewportChange, true);
     return () => {
-      document.removeEventListener('mousedown', close);
+      document.removeEventListener('pointerdown', closeOutside);
       document.removeEventListener('keydown', closeOnEscape);
-      window.removeEventListener('resize', closeOnViewportChange);
-      window.removeEventListener('scroll', closeOnViewportChange, true);
+      window.removeEventListener('resize', onViewportChange);
+      window.removeEventListener('scroll', onViewportChange, true);
     };
   }, [open]);
 
@@ -146,6 +166,7 @@ export function RowActionsMenu({ children, label = 'Thao tác', colorful = false
           role="menu"
           className="fixed z-[120] w-48 rounded-2xl border border-zinc-200 bg-white p-1.5 shadow-2xl"
           style={position}
+          onPointerDown={event => event.stopPropagation()}
         >
           {actions.map((action, index) => {
             const actionLabel = getActionLabel(action);
@@ -163,6 +184,11 @@ export function RowActionsMenu({ children, label = 'Thao tác', colorful = false
                   : /sửa|edit/i.test(actionLabel)
                     ? 'text-amber-600 hover:bg-amber-50'
                     : 'text-zinc-600 hover:bg-zinc-50';
+            // preventDefault mousedown: tránh scrollIntoView khi focus nút trong bảng → menu "trượt" mất click.
+            const stabilizePointer = (event: React.MouseEvent | React.PointerEvent) => {
+              event.preventDefault();
+            };
+            const itemClass = `flex min-h-10 w-full items-center justify-start gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${actionTone}`;
 
             if (!isNativeAction) {
               return (
@@ -171,11 +197,12 @@ export function RowActionsMenu({ children, label = 'Thao tác', colorful = false
                   type="button"
                   role="menuitem"
                   disabled={action.props.disabled === true}
+                  onMouseDown={stabilizePointer}
                   onClick={event => {
                     originalOnClick?.(event);
                     if (!event.defaultPrevented) setOpen(false);
                   }}
-                  className={`flex min-h-10 w-full items-center justify-start gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${actionTone}`}
+                  className={itemClass}
                 >
                   {actionVisuals}
                   <span className="min-w-0 flex-1 truncate">{actionLabel}</span>
@@ -187,7 +214,14 @@ export function RowActionsMenu({ children, label = 'Thao tác', colorful = false
               key: action.key ?? `${actionLabel}-${index}`,
               role: 'menuitem',
               title: undefined,
-              className: `${originalClassName} !flex !h-auto !min-h-10 !w-full !items-center !justify-start !gap-2 !rounded-xl !border-0 !bg-transparent !px-3 !py-2 !text-left !text-sm !font-semibold !shadow-none ${actionTone}` ,
+              className: `${originalClassName} !flex !h-auto !min-h-10 !w-full !items-center !justify-start !gap-2 !rounded-xl !border-0 !bg-transparent !px-3 !py-2 !text-left !text-sm !font-semibold !shadow-none ${actionTone}`,
+              onMouseDown: (event: React.MouseEvent<HTMLElement>) => {
+                stabilizePointer(event);
+                const originalMouseDown = action.props.onMouseDown as
+                  | ((event: React.MouseEvent<HTMLElement>) => void)
+                  | undefined;
+                originalMouseDown?.(event);
+              },
               onClick: (event: React.MouseEvent<HTMLElement>) => {
                 originalOnClick?.(event);
                 if (!event.defaultPrevented) setOpen(false);

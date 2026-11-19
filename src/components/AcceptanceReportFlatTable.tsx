@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Eye, Loader2, Pencil, Trash2 } from 'lucide-react';
+import { AlertTriangle, Eye, Loader2, Pencil, Trash2 } from 'lucide-react';
 import {
   sumByUnit,
   sumTrongLuongKg
@@ -33,6 +33,8 @@ export type NvlWeightGroupTotals = {
   bangKeoKg: number | null;
   /** Σ NVL tem nhãn (TEM…). */
   temKg: number | null;
+  /** Cân có bì/lõi nhưng Thành phần SP thiếu mã túi/ống — không tự cộng, chỉ cảnh báo. */
+  missingBomWarnings?: string[];
 };
 
 type Props = {
@@ -149,7 +151,44 @@ export default function AcceptanceReportFlatTable({
     };
   }, [nvlWeightByReportId, rows]);
 
+  const bomWarnings = useMemo(() => {
+    const list: Array<{ matHang: string; messages: string[] }> = [];
+    for (const row of rows) {
+      const nvl = nvlWeightByReportId?.get(String(row.id || ''));
+      const messages = nvl?.missingBomWarnings || [];
+      if (messages.length === 0) continue;
+      list.push({ matHang: row.mat_hang || row.ten_sp || '—', messages });
+    }
+    return list;
+  }, [nvlWeightByReportId, rows]);
+
   return (
+    <>
+      {bomWarnings.length > 0 ? (
+        <div className="mb-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-[12px] text-amber-900">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+            <div className="min-w-0 space-y-1">
+              <p className="font-bold">
+                Cân có bì/lõi nhưng Thành phần SP thiếu mã túi/ống — không tự cộng vào TL VT không
+                trộn. Hãy thêm mã vào Kho sản phẩm → Thành phần.
+              </p>
+              <ul className="list-disc space-y-0.5 pl-4 font-semibold">
+                {bomWarnings.slice(0, 8).map(item => (
+                  <li key={item.matHang}>
+                    <span className="font-mono font-black">{item.matHang}</span>
+                    {': '}
+                    {item.messages.join(' · ')}
+                  </li>
+                ))}
+                {bomWarnings.length > 8 ? (
+                  <li>… và {bomWarnings.length - 8} mã khác</li>
+                ) : null}
+              </ul>
+            </div>
+          </div>
+        </div>
+      ) : null}
     <TableShell
       minWidthClassName="min-w-[1620px]"
       maxHeightClassName="max-h-[70vh]"
@@ -251,8 +290,16 @@ export default function AcceptanceReportFlatTable({
                 <td className="whitespace-nowrap border-r border-zinc-200 px-2 py-1.5 text-right font-mono text-[12px] font-bold tabular-nums text-emerald-800 last:border-r-0">
                   {formatNvlGroupKg(nvl?.tronKg)}
                 </td>
-                <td className="whitespace-nowrap border-r border-zinc-200 px-2 py-1.5 text-right font-mono text-[12px] font-bold tabular-nums text-sky-800 last:border-r-0">
-                  {formatNvlGroupKg(nvl?.khongTronKg)}
+                <td
+                  className="whitespace-nowrap border-r border-zinc-200 px-2 py-1.5 text-right font-mono text-[12px] font-bold tabular-nums text-sky-800 last:border-r-0"
+                  title={nvl?.missingBomWarnings?.join('\n') || undefined}
+                >
+                  <span className="inline-flex items-center justify-end gap-1">
+                    {nvl?.missingBomWarnings?.length ? (
+                      <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-600" aria-label="Thiếu mã túi/ống trên Thành phần" />
+                    ) : null}
+                    {formatNvlGroupKg(nvl?.khongTronKg)}
+                  </span>
                 </td>
                 <td className="whitespace-nowrap border-r border-zinc-200 px-2 py-1.5 text-right font-mono text-[12px] font-bold tabular-nums text-cyan-800 last:border-r-0">
                   {filmKg != null ? `${formatNumber(filmKg, 2)} Kg` : '—'}
@@ -343,5 +390,6 @@ export default function AcceptanceReportFlatTable({
         </tfoot>
       ) : null}
     </TableShell>
+    </>
   );
 }

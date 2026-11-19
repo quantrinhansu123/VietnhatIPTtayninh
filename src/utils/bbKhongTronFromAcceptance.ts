@@ -260,6 +260,7 @@ export function syncBbThucDungRowsOngFromAcceptanceReports(input: {
       pickKg: report => positiveKg(report.trong_luong_loi),
       matchItem: isNvlOngItem
     });
+    // Không fallback khi Thành phần thiếu ống — người dùng tự thêm mã ống vào SP.
     if (byMaterial.size === 0) continue;
     next = applyFinishedKgByMaterial(next, byMaterial, row =>
       Boolean(isOngRow(row) && row.ngay === ngay && row.shift === shift && row.machine === machine)

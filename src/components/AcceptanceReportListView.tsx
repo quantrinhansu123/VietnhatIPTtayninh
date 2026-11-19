@@ -434,13 +434,27 @@ function computeNvlWeightGroupTotals(
   canWeights?: { biKg?: number | null; loiKg?: number | null }
 ): NvlWeightGroupTotals {
   if (items.length === 0) {
+    const emptyWarnings: string[] = [];
+    const biEmpty = positiveCanKg(canWeights?.biKg);
+    const loiEmpty = positiveCanKg(canWeights?.loiKg);
+    if (biEmpty != null && biEmpty > 0) {
+      emptyWarnings.push(
+        `Cân có bì ${biEmpty} kg nhưng Thành phần SP chưa có mã túi — hãy thêm túi vào Thành phần.`
+      );
+    }
+    if (loiEmpty != null && loiEmpty > 0) {
+      emptyWarnings.push(
+        `Cân có lõi ${loiEmpty} kg nhưng Thành phần SP chưa có mã ống — hãy thêm ống vào Thành phần.`
+      );
+    }
     return {
       tronKg: null,
       khongTronKg: null,
       tuiKg: null,
       ongKg: null,
       bangKeoKg: null,
-      temKg: null
+      temKg: null,
+      missingBomWarnings: emptyWarnings.length > 0 ? emptyWarnings : undefined
     };
   }
   const tuiIndices: number[] = [];
@@ -506,13 +520,27 @@ function computeNvlWeightGroupTotals(
       if (kg != null && kg > 0) temKg += kg;
     }
   });
+  // Không fallback cộng kg cân khi thiếu mã túi/ống trên Thành phần —
+  // chỉ cảnh báo để người dùng tự thêm vào Kho sản phẩm.
+  const missingBomWarnings: string[] = [];
+  if (biFromCan != null && biFromCan > 0 && tuiIndices.length === 0) {
+    missingBomWarnings.push(
+      `Cân có bì ${biFromCan} kg nhưng Thành phần SP chưa có mã túi — hãy thêm túi vào Thành phần.`
+    );
+  }
+  if (loiFromCan != null && loiFromCan > 0 && ongIndices.length === 0) {
+    missingBomWarnings.push(
+      `Cân có lõi ${loiFromCan} kg nhưng Thành phần SP chưa có mã ống — hãy thêm ống vào Thành phần.`
+    );
+  }
   return {
     tronKg: hasTron ? Math.round(tronKg * 10000) / 10000 : null,
     khongTronKg: hasKhongTron ? Math.round(khongTronKg * 10000) / 10000 : null,
     tuiKg: hasTui ? Math.round(tuiKg * 10000) / 10000 : null,
     ongKg: hasOng ? Math.round(ongKg * 10000) / 10000 : null,
     bangKeoKg: hasBangKeo ? Math.round(bangKeoKg * 10000) / 10000 : null,
-    temKg: hasTem ? Math.round(temKg * 10000) / 10000 : null
+    temKg: hasTem ? Math.round(temKg * 10000) / 10000 : null,
+    missingBomWarnings: missingBomWarnings.length > 0 ? missingBomWarnings : undefined
   };
 }
 

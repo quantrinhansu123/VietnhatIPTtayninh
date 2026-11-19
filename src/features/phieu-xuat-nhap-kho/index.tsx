@@ -2346,33 +2346,59 @@ export function WarehouseSlipPanel({
   };
 
   // Phiếu gắn với lệnh qua [LXH:mã] trong ghi chú: đổi lệnh thì chuyển sang phiếu chưa chốt của lệnh đó, không có thì phiếu mới.
-  const handleShippingOrderChange = (id: string) => {
+  const handleShippingOrderChange = async (id: string) => {
     if (id === shippingOrderId) return;
     const order = shippingOrders.find(item => item.id === id);
+    const tag = order ? normalizeMaterialCodeKey(order.ma_lenh) : '';
+    const findByTag = (slips: OpenProductSlip[]) =>
+      tag
+        ? slips.find(slip => {
+            const code = String(slip.ghi_chu || '').match(/\[LXH:([^\]]+)\]/i)?.[1]?.trim();
+            return code && normalizeMaterialCodeKey(code) === tag;
+          })
+        : undefined;
+    // Luôn tìm phiếu chưa chốt của lệnh (kể cả khi đang ở phiếu trắng) để quét bổ sung vào đúng phiếu cũ, không tạo đợt mới.
+    let existing = findByTag(openProductSlips);
+    if (!existing && tag && warehouseName.trim()) {
+      try {
+        const params = new URLSearchParams({ loai_phieu: slipType, kho: warehouseName.trim(), limit: '100' });
+        const res = await fetch(`/api/kho/phieu?${params.toString()}`);
+        const data = await res.json().catch(() => ({}));
+        const fresh = res.ok && Array.isArray(data?.records) ? data.records as OpenProductSlip[] : [];
+        if (fresh.length) {
+          setOpenProductSlips(fresh);
+          existing = findByTag(fresh);
+        }
+      } catch {
+        // Không tải được danh sách thì dùng danh sách hiện có.
+      }
+    }
+    if (existing && existing.ma_phieu === selectedProductSlipCode) {
+      setShippingOrderId(id);
+      return;
+    }
     const hasSlip = Boolean(selectedProductSlipCode) || lines.some(line => line.code.trim());
-    if (!hasSlip && !pendingScannedProductDetails.length) {
+    if (!existing && !hasSlip && !pendingScannedProductDetails.length) {
       setShippingOrderId(id);
       return;
     }
     if (pendingScannedProductDetails.length && !window.confirm('Các mã mới quét chưa lưu đợt. Đổi lệnh xuất sẽ xóa chúng khỏi danh sách hiện tại. Tiếp tục?')) return;
-    const day = slipDate;
-    const tag = order ? normalizeMaterialCodeKey(order.ma_lenh) : '';
-    const existing = tag
-      ? openProductSlips.find(slip => {
-          const code = String(slip.ghi_chu || '').match(/\[LXH:([^\]]+)\]/i)?.[1]?.trim();
-          return code && normalizeMaterialCodeKey(code) === tag;
-        })
-      : undefined;
     if (existing) {
       setIsLoadingProductSlips(true);
-      void loadOpenProductSlip(existing)
-        .catch((error: any) => setFormError(showSaveFailure(error, 'Không tải được phiếu chưa chốt.')))
-        .finally(() => {
-          setIsLoadingProductSlips(false);
-          setShippingOrderId(id);
-        });
+      try {
+        await loadOpenProductSlip(existing);
+        // Ngày phiếu quyết định danh sách lệnh hiển thị; giữ theo ngày của lệnh để không bị bỏ chọn.
+        const orderDay = order?.ngay_xuat.slice(0, 10);
+        if (orderDay) setSlipDate(orderDay);
+        setShippingOrderId(id);
+      } catch (error: any) {
+        setFormError(showSaveFailure(error, 'Không tải được phiếu chưa chốt.'));
+      } finally {
+        setIsLoadingProductSlips(false);
+      }
       return;
     }
+    const day = slipDate;
     createNewProductSlip();
     setSlipDate(day);
     setShippingOrderId(id);

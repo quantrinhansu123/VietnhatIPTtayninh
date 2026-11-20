@@ -4127,6 +4127,18 @@ export function WarehouseSlipPanel({
         })
       ).values()];
       if (!candidates.length) return;
+      // Dòng nhập tay/dòng thừa không thuộc lệnh không được lọt vào phiếu của lệnh.
+      if (slipType === 'xuat' && warehouseKind === 'san_pham' && shippingOrderId) {
+        const outside = candidates.filter(
+          item => !shippingOrderItems.some(order => normalizeMaterialCodeKey(order.code) === normalizeMaterialCodeKey(warehouseCodePrefix(item.fullCode)))
+        );
+        if (outside.length) {
+          const message = `Mã ${outside.slice(0, 5).map(item => item.fullCode).join(', ')} không nằm trong lệnh xuất hàng này. Xóa dòng đó rồi Lưu đợt lại.`;
+          setFormError(message);
+          showAppToast(message, 'error');
+          return;
+        }
+      }
       if (slipType === 'xuat' && candidates.some(item => !(item.so_luong > 0))) {
         const message = 'Số lượng xuất phải lớn hơn 0 (vd 1, 0.5, 1/2, 1/3).';
         setFormError(message);

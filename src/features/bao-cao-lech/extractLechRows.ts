@@ -178,17 +178,22 @@ export function extractLechRowsFromSnapshotPayload(
     for (const line of root.thucDungRows) pushLine(line);
   }
 
-  out.sort((a, b) => {
+  return sortLechRowsByNgayCaMay(out);
+}
+
+/** Ngày mới → đầu; cùng ngày theo ca → máy → |lệch| lớn → mã NVL. */
+export function sortLechRowsByNgayCaMay(rows: LechReportRow[]): LechReportRow[] {
+  return [...rows].sort((a, b) => {
+    const byDate = b.ngay.localeCompare(a.ngay);
+    if (byDate !== 0) return byDate;
+    const byShift = a.shift.localeCompare(b.shift, 'vi');
+    if (byShift !== 0) return byShift;
+    const byMachine = (a.machineCode || a.machine).localeCompare(b.machineCode || b.machine, 'vi');
+    if (byMachine !== 0) return byMachine;
     const byAbs = Math.abs(b.chenhLechKg) - Math.abs(a.chenhLechKg);
     if (byAbs !== 0) return byAbs;
-    const byDate = a.ngay.localeCompare(b.ngay);
-    if (byDate !== 0) return byDate;
-    const byMachine = a.machineCode.localeCompare(b.machineCode, 'vi');
-    if (byMachine !== 0) return byMachine;
     return a.materialCode.localeCompare(b.materialCode, 'vi');
   });
-
-  return out;
 }
 
 export function formatLechKg(value: number): string {

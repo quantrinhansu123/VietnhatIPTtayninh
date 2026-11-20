@@ -11,6 +11,7 @@ import {
   extractLechRowsFromSnapshotPayload,
   formatLechKg,
   machineMatchesFilter,
+  sortLechRowsByNgayCaMay,
   type LechReportRow
 } from './extractLechRows';
 
@@ -120,12 +121,7 @@ export function BaoCaoLechPanel({ filters }: Props) {
           extracted.push(row);
         }
       }
-      extracted.sort((a, b) => {
-        const byAbs = Math.abs(b.chenhLechKg) - Math.abs(a.chenhLechKg);
-        if (byAbs !== 0) return byAbs;
-        return a.ngay.localeCompare(b.ngay) || a.machine.localeCompare(b.machine, 'vi');
-      });
-      setRows(extracted);
+      setRows(sortLechRowsByNgayCaMay(extracted));
 
       if (noteRes.ok) {
         const noteJson = await noteRes.json().catch(() => ({}));
@@ -190,11 +186,12 @@ export function BaoCaoLechPanel({ filters }: Props) {
   }, []);
 
   const visibleRows = useMemo(() => {
-    return rows.filter(row => {
+    const filtered = rows.filter(row => {
       if (!matchesHubFilters(row, filters)) return false;
       if (onlyNonZero && Math.abs(row.chenhLechKg) < 0.0005) return false;
       return true;
     });
+    return sortLechRowsByNgayCaMay(filtered);
   }, [rows, filters, onlyNonZero]);
 
   const anomalyCount = useMemo(

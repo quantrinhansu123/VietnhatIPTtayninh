@@ -61,7 +61,7 @@
 
 ## Frontend
 
-Nút **Chuyển toàn bộ MT → Đà Nẵng** gọi `POST /api/can-tu-dong/chuyen-da-nang`, chuyển mọi ngày theo tiền tố `qr_code` MT (không phân biệt hoa thường), giữ nguyên mã và dữ liệu. RPC `chuyen_can_mt_da_nang` copy rồi xóa trong một transaction; lỗi/trùng khóa rollback toàn bộ. Cài `supabase-bang-can-da-nang.sql` rồi `supabase-chuyen-can-da-nang.sql` trên DB cân trước khi dùng. Bảng đích bật RLS, RPC chỉ cho service_role.
+Nút **Chuyển toàn bộ MT → Đà Nẵng** gọi `POST /api/can-tu-dong/chuyen-da-nang`, chuyển mọi ngày theo tiền tố `qr_code` MT (không phân biệt hoa thường), giữ nguyên mã và dữ liệu. Ưu tiên RPC `chuyen_can_mt_da_nang`; nếu RPC lỗi trùng `event_id` (hàm cũ) thì **fallback REST**: bỏ qua dòng đã có trên `bang_can_da_nang` (`id`/`event_id`), không ghi cột generated `net_weight`, rồi xóa MT đã có trên Đà Nẵng khỏi `can_tu_dong`. Nên chạy lại `supabase-chuyen-can-da-nang.sql` trên DB cân để RPC cũng idempotent. Bảng đích bật RLS, RPC chỉ cho service_role.
 
 | File | Nội dung |
 |------|----------|

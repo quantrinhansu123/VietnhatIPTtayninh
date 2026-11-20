@@ -23,7 +23,7 @@ import {
   StatusBadge,
   RowActionsMenu
 } from '../../components/shared/table';
-import { Loader2, Save, FlaskConical, Download, Upload, Plus, Eye, Pencil, Trash2, QrCode, X, Warehouse, ClipboardList, RefreshCw } from 'lucide-react';
+import { Loader2, Save, FlaskConical, Download, Upload, Plus, Eye, Pencil, Trash2, QrCode, X, Warehouse, ClipboardList, RefreshCw, Calculator } from 'lucide-react';
 import { productFieldClass } from './productFieldClass';
 import type { ProductRow, ProductNplItem, MaterialOption, ProductNplAmountType } from './types';
 import { downloadBulkProductNplComponentsTemplate, downloadProductNplComponentsTemplate, parseThanhPhanLongFormatExcel, parseBulkProductNplComponentsExcel, parseImportSpExcelRows } from '../../utils/productNplComponentsExcel';
@@ -518,6 +518,68 @@ export function resolveProductNplUnitKind(
   if (item.amountType === 'percent') return 'percent';
   if (isProductNplKgUnit(item.unit || '')) return 'kg';
   return 'qty';
+}
+
+/** Trọng lượng kg dùng để tính lại % / lọc tab kg. */
+export function resolveProductNplWeightKg(
+  item: Pick<ProductNplItem, 'weightKg' | 'quantity' | 'unit'>
+): number | null {
+  if (item.weightKg !== null && item.weightKg !== undefined && Number.isFinite(item.weightKg) && item.weightKg > 0) {
+    return item.weightKg;
+  }
+  if (
+    item.quantity !== null &&
+    item.quantity !== undefined &&
+    Number.isFinite(item.quantity) &&
+    item.quantity > 0 &&
+    isProductNplKgUnit(item.unit || '')
+  ) {
+    return item.quantity;
+  }
+  return null;
+}
+
+/**
+ * Tính lại % từ khối lượng: percent_i = weight_i / Σ weight × 100.
+ * Chỉ đổi dòng `amountType === 'percent'` có trọng lượng kg; dòng cuối chỉnh cho tổng ≈ 100.
+ */
+export function recalcProductNplPercentsFromWeights(items: ProductNplItem[]): {
+  items: ProductNplItem[];
+  updated: number;
+  totalKg: number;
+} {
+  const indices: number[] = [];
+  const weights: number[] = [];
+  items.forEach((item, index) => {
+    if (item.amountType !== 'percent') return;
+    const weight = resolveProductNplWeightKg(item);
+    if (weight == null) return;
+    indices.push(index);
+    weights.push(weight);
+  });
+  const totalKg = weights.reduce((sum, value) => sum + value, 0);
+  if (!(totalKg > 0) || indices.length === 0) {
+    return { items, updated: 0, totalKg: 0 };
+  }
+
+  const next = items.map(item => ({ ...item }));
+  let assigned = 0;
+  indices.forEach((itemIndex, pos) => {
+    const raw =
+      pos === indices.length - 1
+        ? Math.max(0, 100 - assigned)
+        : (weights[pos] / totalKg) * 100;
+    const percent = roundNplNumber(raw);
+    if (pos < indices.length - 1) assigned = roundNplNumber(assigned + percent);
+    const prev = next[itemIndex];
+    next[itemIndex] = {
+      ...prev,
+      amountType: 'percent',
+      percent,
+      unit: '%'
+    };
+  });
+  return { items: next, updated: indices.length, totalKg };
 }
 
 function productNplUnitKindLabel(kind: ProductNplUnitKind) {
@@ -1393,8 +1455,8 @@ export function ProductViewModal({
    * Tách thành phần theo cách định lượng để xem riêng từng loại:
    * - `percent`: định lượng theo % (nhựa, phụ gia…)
    * - `qty`: định lượng theo số lượng đếm được (Cái, Cuộn, Bao…)
-   * - `kg`: định lượng theo kg (không phải %)
-   * Mục nào không có dòng thì không hiện tab.
+   * - `kg`: có trọng lượng kg (weightKg / ĐVT kg) — dùng để lọc theo khối lượng
+   * Mục nào không có dòng thì không hiện tab (trừ luôn hiện kg khi có trọng lượng).
    */
   const componentGroups = useMemo(() => {
     const groups: Record<ProductNplUnitKind, Array<{ item: ProductNplItem; index: number }>> = {
@@ -1405,6 +1467,10 @@ export function ProductViewModal({
     items.forEach((item, index) => {
       const kind = resolveProductNplUnitKind(item);
       groups[kind].push({ item, index });
+      // Tab kg: mọi dòng có trọng lượng kg (kể cả dòng đang là %).
+      if (kind !== 'kg' && resolveProductNplWeightKg(item) != null) {
+        groups.kg.push({ item, index });
+      }
     });
     return groups;
   }, [items]);
@@ -1423,6 +1489,42 @@ export function ProductViewModal({
     if (componentKindTab === 'all') return;
     if (componentGroups[componentKindTab].length === 0) setComponentKindTab('all');
   }, [componentKindTab, componentGroups]);
+
+  const [isRecalcPercent, setIsRecalcPercent] = useState(false);
+
+  const handleRecalcPercentFromWeight = async () => {
+    if (!canEditComponents || isSaving || isRecalcPercent) return;
+    const result = recalcProductNplPercentsFromWeights(items);
+    if (result.updated === 0) {
+      setComponentsExcelError(
+        'Không có dòng Phần trăm (%) kèm trọng lượng kg để tính lại. Hãy nhập Trọng lượng trước.'
+      );
+      setComponentsExcelMessage('');
+      return;
+    }
+    if (
+      !window.confirm(
+        `Tính lại phần trăm từ khối lượng cho ${result.updated} dòng?\n` +
+          `Σ kg = ${formatNplWeightKg(result.totalKg)} → %_i = kg_i / Σ kg × 100.`
+      )
+    ) {
+      return;
+    }
+    setIsRecalcPercent(true);
+    setComponentsExcelError('');
+    try {
+      await onSaveItems(result.items);
+      setItems(result.items);
+      setComponentsExcelMessage(
+        `Đã tính lại % từ khối lượng cho ${result.updated} dòng (Σ ${formatNplWeightKg(result.totalKg)} kg).`
+      );
+      setComponentKindTab('percent');
+    } catch {
+      // Lỗi đã hiển thị ở ProductsPanel
+    } finally {
+      setIsRecalcPercent(false);
+    }
+  };
 
   const visibleComponentRows = useMemo(() => {
     if (componentKindTab === 'all') {
@@ -2327,6 +2429,20 @@ export function ProductViewModal({
                       />
                       <button
                         type="button"
+                        onClick={() => void handleRecalcPercentFromWeight()}
+                        disabled={isSaving || isRecalcPercent}
+                        className="flex h-9 items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 text-xs font-extrabold text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        title="Tính lại % từng dòng Phần trăm từ cột Trọng lượng: % = kg / Σ kg × 100"
+                      >
+                        {isRecalcPercent ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Calculator className="h-4 w-4" />
+                        )}
+                        {isRecalcPercent ? 'Đang tính...' : 'Tính lại phần trăm'}
+                      </button>
+                      <button
+                        type="button"
                         onClick={openAddForm}
                         className="flex h-9 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-3 text-xs font-extrabold text-white transition hover:bg-[#b30d1c]"
                       >
@@ -2350,7 +2466,7 @@ export function ProductViewModal({
                 </p>
               )}
 
-              {componentKindTabs.length > 1 ? (
+              {items.length > 0 ? (
                 <div className="flex flex-wrap items-center gap-1.5">
                   <button
                     type="button"
@@ -2370,18 +2486,34 @@ export function ProductViewModal({
                       {items.length}
                     </span>
                   </button>
-                  {componentKindTabs.map(def => {
+                  {(
+                    [
+                      { key: 'percent' as const, label: 'Phần trăm (%)' },
+                      { key: 'qty' as const, label: 'Số lượng' },
+                      { key: 'kg' as const, label: 'Khối lượng (kg)' }
+                    ] as const
+                  ).map(def => {
+                    const count = componentGroups[def.key].length;
                     const active = componentKindTab === def.key;
+                    const disabled = count === 0;
                     return (
                       <button
                         key={def.key}
                         type="button"
+                        disabled={disabled}
                         onClick={() => setComponentKindTab(def.key)}
-                        className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-extrabold transition ${
+                        className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-extrabold transition disabled:cursor-not-allowed disabled:opacity-40 ${
                           active
                             ? 'border-[#ef1b2d] bg-[#ef1b2d] text-white'
                             : 'border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50'
                         }`}
+                        title={
+                          def.key === 'kg'
+                            ? 'Lọc dòng có trọng lượng kg'
+                            : disabled
+                              ? 'Không có dòng loại này'
+                              : undefined
+                        }
                       >
                         {def.label}
                         <span
@@ -2389,7 +2521,7 @@ export function ProductViewModal({
                             active ? 'bg-white/20 text-white' : 'bg-zinc-100 text-zinc-600'
                           }`}
                         >
-                          {componentGroups[def.key].length}
+                          {count}
                         </span>
                       </button>
                     );

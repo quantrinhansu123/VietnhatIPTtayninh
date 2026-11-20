@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   ArrowLeft,
+  Eye,
   Loader2,
   Pencil,
   Plus,
@@ -504,8 +505,16 @@ function DateGroupSection({
                       </td>
                     )}
                     <td className="px-3 py-2">
-                      <RowActionsMenu label="Thao tác dòng cân">
+                      <RowActionsMenu label="Thao tác dòng cân" colorful>
                         <div className="flex items-center justify-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => onViewRow(entry.row)}
+                            title="Xem"
+                            className="flex h-7 w-7 items-center justify-center rounded-lg border border-zinc-200 text-violet-600 transition hover:bg-violet-50"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                          </button>
                           <button
                             type="button"
                             onClick={() => onPrintSlip(entry.slip)}

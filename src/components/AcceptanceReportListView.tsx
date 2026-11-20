@@ -1036,11 +1036,28 @@ export default function AcceptanceReportListView({
 
   const reportsWithNames = useMemo(
     () =>
-      filteredReports.map(report => ({
-        ...report,
-        ten_sp: resolveReportProductName(report, productNameByCode)
-      })),
-    [filteredReports, productNameByCode]
+      filteredReports.map(report => {
+        const productCode = resolveReportProductCode(report.mat_hang);
+        const catalogEntry =
+          productCatalogByKey.get(normalizeProductKey(productCode)) ||
+          productCatalogByKey.get(normalizeProductKey(report.mat_hang)) ||
+          null;
+        const savedUnit = String(report.don_vi || '').trim();
+        const catalogUnit = String(catalogEntry?.unit || '').trim();
+        // Phiếu cũ / tự điền thiếu don_vi → lấy ĐVT từ danh mục SP (cùng cách đã làm với ten_sp).
+        const donVi =
+          savedUnit && savedUnit !== '-'
+            ? savedUnit
+            : catalogUnit && catalogUnit !== '-'
+              ? catalogUnit
+              : savedUnit;
+        return {
+          ...report,
+          ten_sp: resolveReportProductName(report, productNameByCode),
+          don_vi: donVi
+        };
+      }),
+    [filteredReports, productCatalogByKey, productNameByCode]
   );
 
   const filmKgByProductCode = useMemo(

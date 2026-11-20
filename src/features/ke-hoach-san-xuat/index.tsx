@@ -5980,7 +5980,16 @@ export function AddProductionOrderModal({
   const autofillOrderOptions = useMemo(() => {
     const tokens = tokenizeSearchQuery(autofillSearch);
     return autofillOrders
-      .filter(order => getOrderProductLines(order).length > 0)
+      .filter(order => {
+        // Ẩn đơn không còn SP cần lập lệnh SX (remainingQty = 0).
+        const remaining = listProductOptionsForOrder(
+          autofillOrders,
+          productionOrders,
+          catalogProducts,
+          order.orderCode
+        ).filter(product => product.orderQty > 0 && product.remainingQty > 0);
+        return remaining.length > 0;
+      })
       .filter(order => {
         if (tokens.length === 0) return true;
         const productLines = getOrderProductLines(order);
@@ -6011,11 +6020,27 @@ export function AddProductionOrderModal({
         if (Number.isFinite(bCreated) !== Number.isFinite(aCreated)) return Number.isFinite(bCreated) ? 1 : -1;
         return b.orderCode.localeCompare(a.orderCode, 'vi', { numeric: true });
       });
-  }, [autofillSearch, autofillOrders]);
+  }, [autofillSearch, autofillOrders, productionOrders, catalogProducts]);
 
   const allAutofillOrdersSelected =
     autofillOrderOptions.length > 0 &&
     autofillOrderOptions.every(order => selectedAutofillOrderCodes.includes(order.orderCode));
+
+  // Bỏ tick đơn đã hết SP còn lại (không còn hiện trong danh sách).
+  useEffect(() => {
+    const validCodes = new Set(autofillOrderOptions.map(order => order.orderCode));
+    setSelectedAutofillOrderCodes(prev => {
+      const next = prev.filter(code => validCodes.has(code));
+      return next.length === prev.length ? prev : next;
+    });
+    setSelectedAutofillProductKeys(prev => {
+      const next = prev.filter(key => {
+        const orderCode = key.split('::')[0] || '';
+        return validCodes.has(orderCode);
+      });
+      return next.length === prev.length ? prev : next;
+    });
+  }, [autofillOrderOptions]);
 
   const autofillProductCandidates = useMemo(() => {
     return selectedAutofillOrderCodes.flatMap(orderRef =>

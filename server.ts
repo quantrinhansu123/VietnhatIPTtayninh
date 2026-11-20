@@ -32,6 +32,11 @@ const WEIGHING_DB_FILE_PATH = process.env.VERCEL
 const DAMAGED_GOODS_DB_FILE_PATH = process.env.VERCEL
   ? path.join('/tmp', 'bao-cao-hang-hong-db.json')
   : path.join(process.cwd(), 'bao-cao-hang-hong-db.json');
+const BAO_CAO_LECH_GHI_CHU_DB_FILE_PATH = process.env.VERCEL
+  ? path.join('/tmp', 'bao-cao-lech-ghi-chu-db.json')
+  : path.join(process.cwd(), 'bao-cao-lech-ghi-chu-db.json');
+const SUPABASE_BAO_CAO_LECH_GHI_CHU_TABLE =
+  process.env.SUPABASE_BAO_CAO_LECH_GHI_CHU_TABLE || 'bao_cao_lech_ghi_chu';
 /** Map giá mua gần nhất NVL (từ Excel) khi chưa có / chưa ghi cột kho_nvl.don_gia. */
 const NVL_DON_GIA_FILE_PATH = process.env.VERCEL
   ? path.join('/tmp', 'nvl-don-gia.json')
@@ -16672,9 +16677,148 @@ export function createApp() {
 
   app.post('/api/can-tu-dong/chuyen-da-nang', async (_req, res) => {
     if (!supabaseWeighing) return res.status(503).json({ error: 'Chưa cấu hình DB cân.' });
-    const { data, error } = await supabaseWeighing.rpc('chuyen_can_mt_da_nang');
-    if (error) return res.status(400).json({ error: `Không chuyển được dữ liệu. Cần cài bảng và hàm chuyển Đà Nẵng trên DB cân. ${error.message}` });
-    return res.json({ success: true, moved: Number(data) || 0 });
+
+    // Ưu tiên RPC (atomic). Nếu trùng event_id (hàm cũ) hoặc RPC chưa cài → fallback REST bỏ qua trùng.
+    const rpc = await supabaseWeighing.rpc('chuyen_can_mt_da_nang');
+    if (!rpc.error) {
+      return res.json({ success: true, moved: Number(rpc.data) || 0, mode: 'rpc' });
+    }
+
+    const rpcMsg = String(rpc.error.message || '');
+    const canFallback =
+      /duplicate key|unique constraint|bang_can_da_nang_event_id|Could not find the function|PGRST202|42883/i.test(
+        rpcMsg
+      );
+    if (!canFallback) {
+      return res.status(400).json({
+        error: `Không chuyển được dữ liệu. Cần cài bảng và hàm chuyển Đà Nẵng trên DB cân. ${rpcMsg}`
+      });
+    }
+
+    try {
+      const DA_NANG_TABLE = 'bang_can_da_nang';
+      const pageSize = 1000;
+      const mtRows: Record<string, unknown>[] = [];
+      for (let offset = 0; offset < 100000; offset += pageSize) {
+        const { data, error } = await supabaseWeighing
+          .from(SUPABASE_CAN_TU_DONG_TABLE)
+          .select('*')
+          .ilike('qr_code', 'MT%')
+          .order('id', { ascending: true })
+          .range(offset, offset + pageSize - 1);
+        if (error) throw new Error(error.message || 'Không đọc được can_tu_dong.');
+        const chunk = Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
+        mtRows.push(...chunk);
+        if (chunk.length < pageSize) break;
+      }
+
+      if (mtRows.length === 0) {
+        return res.json({ success: true, moved: 0, mode: 'rest', note: 'Không còn dòng MT trên bảng cân.' });
+      }
+
+      const existingId = new Set<string>();
+      const existingEventId = new Set<string>();
+      for (let offset = 0; offset < 100000; offset += pageSize) {
+        const { data, error } = await supabaseWeighing
+          .from(DA_NANG_TABLE)
+          .select('id,event_id')
+          .order('id', { ascending: true })
+          .range(offset, offset + pageSize - 1);
+        if (error) throw new Error(error.message || 'Không đọc được bang_can_da_nang.');
+        const chunk = Array.isArray(data) ? data : [];
+        for (const row of chunk) {
+          const id = String((row as { id?: unknown }).id ?? '').trim();
+          const eventId = String((row as { event_id?: unknown }).event_id ?? '').trim();
+          if (id) existingId.add(id);
+          if (eventId) existingEventId.add(eventId);
+        }
+        if (chunk.length < pageSize) break;
+      }
+
+      const toInsert = mtRows.filter(row => {
+        const id = String(row.id ?? '').trim();
+        const eventId = String(row.event_id ?? '').trim();
+        if (id && existingId.has(id)) return false;
+        if (eventId && existingEventId.has(eventId)) return false;
+        return true;
+      });
+
+      // net_weight là generated column — không insert được qua REST.
+      const stripGenerated = (row: Record<string, unknown>) => {
+        const next = { ...row };
+        delete next.net_weight;
+        return next;
+      };
+
+      let inserted = 0;
+      for (let i = 0; i < toInsert.length; i += 200) {
+        const batch = toInsert.slice(i, i + 200).map(stripGenerated);
+        const { error } = await supabaseWeighing.from(DA_NANG_TABLE).insert(batch);
+        if (error) {
+          // Thử từng dòng nếu batch dính trùng còn sót.
+          for (const row of batch) {
+            const one = await supabaseWeighing.from(DA_NANG_TABLE).insert(stripGenerated(row));
+            if (!one.error) {
+              inserted += 1;
+              const id = String(row.id ?? '').trim();
+              const eventId = String(row.event_id ?? '').trim();
+              if (id) existingId.add(id);
+              if (eventId) existingEventId.add(eventId);
+            } else if (!/duplicate key|unique constraint/i.test(one.error.message || '')) {
+              throw new Error(one.error.message || 'Không ghi được bang_can_da_nang.');
+            } else {
+              const id = String(row.id ?? '').trim();
+              const eventId = String(row.event_id ?? '').trim();
+              if (id) existingId.add(id);
+              if (eventId) existingEventId.add(eventId);
+            }
+          }
+        } else {
+          inserted += batch.length;
+          for (const row of batch) {
+            const id = String(row.id ?? '').trim();
+            const eventId = String(row.event_id ?? '').trim();
+            if (id) existingId.add(id);
+            if (eventId) existingEventId.add(eventId);
+          }
+        }
+      }
+
+      const deleteIds = [
+        ...new Set(
+          mtRows
+            .filter(row => {
+              const id = String(row.id ?? '').trim();
+              const eventId = String(row.event_id ?? '').trim();
+              return (id && existingId.has(id)) || (eventId && existingEventId.has(eventId));
+            })
+            .map(row => String(row.id ?? '').trim())
+            .filter(Boolean)
+        )
+      ];
+
+      let removed = 0;
+      for (let i = 0; i < deleteIds.length; i += 200) {
+        const batch = deleteIds.slice(i, i + 200);
+        const { error, count } = await supabaseWeighing
+          .from(SUPABASE_CAN_TU_DONG_TABLE)
+          .delete({ count: 'exact' })
+          .in('id', batch);
+        if (error) throw new Error(error.message || 'Không xóa được dòng MT đã chuyển.');
+        removed += typeof count === 'number' ? count : batch.length;
+      }
+
+      return res.json({
+        success: true,
+        moved: removed,
+        inserted,
+        mode: 'rest',
+        note: rpcMsg ? `RPC lỗi (${rpcMsg}); đã chuyển bằng REST, bỏ qua trùng.` : undefined
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Lỗi khi chuyển MT → Đà Nẵng.';
+      return res.status(500).json({ error: message });
+    }
   });
 
   app.post('/api/can-tu-dong/bulk-delete', async (req, res) => {
@@ -22838,8 +22982,13 @@ export function createApp() {
       if (khoa) {
         query = query.eq('khoa_on_dinh', khoa).limit(1);
       } else {
-        if (dateFrom) query = query.eq('ngay_tu', dateFrom);
-        if (dateTo) query = query.eq('ngay_den', dateTo);
+        // Khoảng ngày: lọc theo ngay_tu nằm trong [dateFrom, dateTo] (hub Báo cáo lệch).
+        if (dateFrom && dateTo && dateFrom === dateTo) {
+          query = query.eq('ngay_tu', dateFrom).eq('ngay_den', dateTo);
+        } else {
+          if (dateFrom) query = query.gte('ngay_tu', dateFrom);
+          if (dateTo) query = query.lte('ngay_tu', dateTo);
+        }
         if (ca) query = query.eq('ca', ca);
         if (may) query = query.eq('may', may);
       }
@@ -22893,6 +23042,156 @@ export function createApp() {
       return res.json({ success: true, item: data || null });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Lỗi khi lưu bản tính toán báo cáo BB.' });
+    }
+  });
+
+  type BaoCaoLechGhiChuRecord = {
+    note_key: string;
+    ngay: string;
+    ca: string;
+    may: string;
+    ma_lenh: string;
+    ma_nvl: string;
+    ten_nvl: string;
+    chenh_lech_kg: number | null;
+    ghi_chu: string;
+    updated_by: string | null;
+    updated_at: string;
+  };
+
+  function readBaoCaoLechGhiChuLocal(): BaoCaoLechGhiChuRecord[] {
+    try {
+      if (!fs.existsSync(BAO_CAO_LECH_GHI_CHU_DB_FILE_PATH)) return [];
+      const raw = fs.readFileSync(BAO_CAO_LECH_GHI_CHU_DB_FILE_PATH, 'utf-8');
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? (parsed as BaoCaoLechGhiChuRecord[]) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function writeBaoCaoLechGhiChuLocal(items: BaoCaoLechGhiChuRecord[]) {
+    fs.writeFileSync(BAO_CAO_LECH_GHI_CHU_DB_FILE_PATH, JSON.stringify(items, null, 2), 'utf-8');
+  }
+
+  function parseBaoCaoLechGhiChuBody(body: any): BaoCaoLechGhiChuRecord | null {
+    if (!body || typeof body !== 'object') return null;
+    const noteKey = String(body.note_key || body.noteKey || '').trim();
+    if (!noteKey) return null;
+    const chenhRaw = body.chenh_lech_kg ?? body.chenhLechKg;
+    const chenh =
+      typeof chenhRaw === 'number' && Number.isFinite(chenhRaw)
+        ? chenhRaw
+        : typeof chenhRaw === 'string' && chenhRaw.trim()
+          ? Number(chenhRaw)
+          : null;
+    return {
+      note_key: noteKey,
+      ngay: String(body.ngay || '').trim(),
+      ca: String(body.ca || body.shift || '').trim(),
+      may: String(body.may || body.machine || '').trim(),
+      ma_lenh: String(body.ma_lenh || body.orderCode || '').trim(),
+      ma_nvl: String(body.ma_nvl || body.materialCode || '').trim(),
+      ten_nvl: String(body.ten_nvl || body.materialName || '').trim(),
+      chenh_lech_kg: chenh != null && Number.isFinite(chenh) ? chenh : null,
+      ghi_chu: String(body.ghi_chu ?? body.note ?? ''),
+      updated_by: body.updated_by != null ? String(body.updated_by) : null,
+      updated_at: new Date().toISOString()
+    };
+  }
+
+  /** Ghi chú bất thường theo dòng lệch NVL (tab Báo cáo /danh-sach-bao-cao). */
+  app.get('/api/bao-cao-lech-ghi-chu', async (req, res) => {
+    try {
+      const dateFrom = typeof req.query.dateFrom === 'string' ? req.query.dateFrom.trim() : '';
+      const dateTo = typeof req.query.dateTo === 'string' ? req.query.dateTo.trim() : '';
+      const noteKey =
+        typeof req.query.note_key === 'string'
+          ? req.query.note_key.trim()
+          : typeof req.query.key === 'string'
+            ? req.query.key.trim()
+            : '';
+
+      if (supabase) {
+        let query = supabase
+          .from(SUPABASE_BAO_CAO_LECH_GHI_CHU_TABLE)
+          .select('*')
+          .order('updated_at', { ascending: false })
+          .limit(2000);
+        if (noteKey) query = query.eq('note_key', noteKey).limit(1);
+        if (dateFrom) query = query.gte('ngay', dateFrom);
+        if (dateTo) query = query.lte('ngay', dateTo);
+        const { data, error } = await query;
+        if (!error) {
+          const items = data || [];
+          return res.json({ items, total: items.length, source: 'supabase' });
+        }
+        // Bảng chưa tạo → fallback file local.
+        if (
+          !String(error.message || '').toLowerCase().includes('does not exist') &&
+          !String(error.code || '').includes('42P01') &&
+          !String(error.message || '').toLowerCase().includes('schema cache')
+        ) {
+          console.error('Supabase bao_cao_lech_ghi_chu query error:', error);
+        }
+      }
+
+      let items = readBaoCaoLechGhiChuLocal();
+      if (noteKey) items = items.filter(item => item.note_key === noteKey);
+      if (dateFrom) items = items.filter(item => !item.ngay || item.ngay >= dateFrom);
+      if (dateTo) items = items.filter(item => !item.ngay || item.ngay <= dateTo);
+      return res.json({ items, total: items.length, source: 'local' });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi tải ghi chú lệch.', items: [] });
+    }
+  });
+
+  app.put('/api/bao-cao-lech-ghi-chu', async (req, res) => {
+    try {
+      const record = parseBaoCaoLechGhiChuBody(req.body);
+      if (!record) {
+        return res.status(400).json({ error: 'Thiếu note_key hợp lệ.' });
+      }
+
+      if (supabase) {
+        const { data, error } = await supabase
+          .from(SUPABASE_BAO_CAO_LECH_GHI_CHU_TABLE)
+          .upsert(
+            {
+              note_key: record.note_key,
+              ngay: record.ngay,
+              ca: record.ca,
+              may: record.may,
+              ma_lenh: record.ma_lenh,
+              ma_nvl: record.ma_nvl,
+              ten_nvl: record.ten_nvl,
+              chenh_lech_kg: record.chenh_lech_kg,
+              ghi_chu: record.ghi_chu,
+              updated_by: record.updated_by,
+              updated_at: record.updated_at
+            },
+            { onConflict: 'note_key' }
+          )
+          .select('*')
+          .maybeSingle();
+        if (!error) {
+          return res.json({ success: true, item: data || record, source: 'supabase' });
+        }
+        if (!String(error.message || '').toLowerCase().includes('does not exist') &&
+            !String(error.code || '').includes('42P01') &&
+            !String(error.message || '').toLowerCase().includes('schema cache')) {
+          console.error('Supabase bao_cao_lech_ghi_chu upsert error:', error);
+        }
+      }
+
+      const items = readBaoCaoLechGhiChuLocal();
+      const idx = items.findIndex(item => item.note_key === record.note_key);
+      if (idx >= 0) items[idx] = { ...items[idx], ...record };
+      else items.push(record);
+      writeBaoCaoLechGhiChuLocal(items);
+      return res.json({ success: true, item: record, source: 'local' });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Lỗi khi lưu ghi chú lệch.' });
     }
   });
 

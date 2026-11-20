@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
-import { Activity, ArrowLeftRight, ChevronLeft, Loader2 } from 'lucide-react';
+import { Activity, ArrowLeftRight, ChevronLeft, ClipboardList, Loader2 } from 'lucide-react';
 import type { AuthUser } from '../../components/LoginPage';
 import type { AcceptanceReport, AcceptanceReportCreatePrefill } from '../../components/AcceptanceReportForm';
 import { DAMAGED_GOODS_SLIP_CONFIG } from '../../lib/weighingSlipConfig';
@@ -31,18 +31,22 @@ const MachineRunLogPanel = lazy(() => import('../../components/MachineRunLogPane
 const ShiftHandoverListView = lazy(() => import('../../components/ShiftHandoverListView'));
 const ControlBoardPanel = lazy(() => import('../control-board').then(m => ({ default: m.ControlBoardPanel })));
 const MaterialConversionPanel = lazy(() => import('../quy-doi-vat-lieu'));
+const BaoCaoLechPanel = lazy(() => import('../bao-cao-lech').then(m => ({ default: m.BaoCaoLechPanel })));
 
 export type ReportListsHubTabId =
   | (typeof REPORT_LIST_MENU_ITEMS)[number]['tab']
   | 'dashboard-auto'
-  | 'material-conversion';
+  | 'material-conversion'
+  | 'bao-cao-lech';
 type HubMenuItem = Omit<MenuCardConfig, 'tab'> & { tab: ReportListsHubTabId };
 
 function shortTabLabel(item: HubMenuItem) {
-  return item.title
+  const stripped = item.title
     .replace(/^Danh sách\s+/i, '')
     .replace(/^Phiếu\s+/i, '')
     .replace(/^Báo cáo\s+/i, '');
+  // Giữ nguyên «Báo cáo» khi title đúng bằng hai chữ đó (không để nhãn tab trống).
+  return stripped.trim() || item.title;
 }
 
 function HubPanelFallback() {
@@ -110,15 +114,27 @@ export function ReportListsHub({
         tab: 'material-conversion'
       }
     ];
-    if (base.some(item => item.tab === 'dashboard-auto')) return base;
+    let withAuto: HubMenuItem[] = base;
+    if (!base.some(item => item.tab === 'dashboard-auto')) {
+      withAuto = [
+        ...base,
+        {
+          title: 'Báo cáo theo LSX',
+          desc: 'Báo cáo tổng hợp máy BB, tính toán và in báo cáo theo từng lệnh sản xuất.',
+          icon: Activity,
+          tab: 'dashboard-auto'
+        } as MenuCardConfig
+      ];
+    }
+    if (withAuto.some(item => item.tab === 'bao-cao-lech')) return withAuto;
     return [
-      ...base,
+      ...withAuto,
       {
-        title: 'Báo cáo theo LSX',
-        desc: 'Báo cáo tổng hợp máy BB, tính toán và in báo cáo theo từng lệnh sản xuất.',
-        icon: Activity,
-        tab: 'dashboard-auto'
-      } as MenuCardConfig
+        title: 'Báo cáo',
+        desc: 'Tổng hợp cột lệch (3.1) từ bản tính toán BB và ghi chú điểm bất thường.',
+        icon: ClipboardList,
+        tab: 'bao-cao-lech'
+      }
     ];
   }, [menuItems]);
 
@@ -218,6 +234,7 @@ export function ReportListsHub({
       const next = new Set<ReportListsHubTabId>([activeHubTab]);
       if (prev.has('can-tu-dong')) next.add('can-tu-dong');
       if (prev.has('material-conversion')) next.add('material-conversion');
+      if (prev.has('bao-cao-lech')) next.add('bao-cao-lech');
       if (next.size === prev.size && [...next].every(item => prev.has(item))) return prev;
       return next;
     });
@@ -453,6 +470,10 @@ export function ReportListsHub({
               onNavigate={onNavigate}
               onMachineReport={() => {}}
             />
+          </KeepAliveSlot>
+
+          <KeepAliveSlot tabId="bao-cao-lech" activeTab={activeHubTab} mountedTabs={mountedTabs}>
+            <BaoCaoLechPanel key={filtersKey} filters={appliedFilters} />
           </KeepAliveSlot>
         </div>
       </div>

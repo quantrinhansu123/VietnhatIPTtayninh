@@ -57,6 +57,7 @@ export type TableId =
   | 'bb_phan_tich_danh_gia'
   | 'bb_giai_trinh'
   | 'bb_bao_cao_tinh_toan'
+  | 'bao_cao_lech_ghi_chu'
   | 'phan_cong_cv'
   | 'quan_tri_db';
 
@@ -763,6 +764,21 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     appLines: 'src/components/ControlBoardBbMachineReportTable.tsx',
     components: ['src/components/ControlBoardBbMachineReportTable.tsx'],
     utils: ['src/utils/bbBaoCaoTinhToan.ts', 'src/utils/controlBoardBbMachineReport.ts']
+  },
+  bao_cao_lech_ghi_chu: {
+    table: 'bao_cao_lech_ghi_chu',
+    label: 'Ghi chú bất thường cột lệch (hub Báo cáo)',
+    sql: ['supabase-bao-cao-lech-ghi-chu.sql'],
+    apiPrefix: '/api/bao-cao-lech-ghi-chu',
+    serverLines: '23104–23195',
+    appTab: 'report-lists → bao-cao-lech',
+    appLines: 'src/features/report-lists/ReportListsHub.tsx',
+    components: [
+      'src/features/bao-cao-lech/index.tsx',
+      'src/features/bao-cao-lech/BaoCaoLechPrintSheet.tsx',
+      'src/features/bao-cao-lech/extractLechRows.ts'
+    ],
+    utils: []
   },
   phan_cong_cv: {
     table: 'phan_cong_cv',

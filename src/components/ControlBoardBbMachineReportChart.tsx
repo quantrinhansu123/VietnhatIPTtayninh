@@ -3,10 +3,10 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
   Legend,
   Line,
   LineChart,
+  Rectangle,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -285,15 +285,24 @@ export default function ControlBoardBbMachineReportChart({
                   cursor={{ fill: CURSOR_WASH }}
                   content={<ChartTooltip formatValue={value => formatMoney(value, 0)} />}
                 />
-                <Bar name="Tổng GT hao hụt + lỗi" dataKey="tongGiaTriHaoHut" maxBarSize={24}>
-                  {chartData.map(entry => (
-                    <Cell
-                      key={entry.key}
-                      fill={entry.tongGiaTriHaoHut >= 0 ? STATUS_CRITICAL_RED : STATUS_GOOD_GREEN}
-                      radius={entry.tongGiaTriHaoHut >= 0 ? [4, 4, 0, 0] : [0, 0, 4, 4]}
-                    />
-                  ))}
-                </Bar>
+                <Bar
+                  name="Tổng GT hao hụt + lỗi"
+                  dataKey="tongGiaTriHaoHut"
+                  maxBarSize={24}
+                  shape={({ x, y, width, height, value }) => {
+                    const nonNegative = (Array.isArray(value) ? value[1] : value) >= 0;
+                    return (
+                      <Rectangle
+                        x={x}
+                        y={y}
+                        width={width}
+                        height={height}
+                        fill={nonNegative ? STATUS_CRITICAL_RED : STATUS_GOOD_GREEN}
+                        radius={nonNegative ? [4, 4, 0, 0] : [0, 0, 4, 4]}
+                      />
+                    );
+                  }}
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>

@@ -284,7 +284,7 @@ export default function App() {
     setActiveTab(nextTab);
     setLocationPath(path);
 
-    if (nextTab === 'dashboard' || nextTab === 'dashboard-auto') {
+    if (nextTab === 'dashboard-auto') {
       fetchReports();
     }
   };

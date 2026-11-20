@@ -2079,7 +2079,7 @@ export function CanTuDongPanel({
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không tải được danh sách kho.'));
         const names = [
-          ...new Set(
+          ...new Set<string>(
             (Array.isArray(data?.records) ? data.records : [])
               .map((row: { ten_kho?: unknown }) => String(row.ten_kho || '').trim())
               .filter((name: string) => name && isFinishedGoodsWarehouseName(name))

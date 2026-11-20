@@ -125,6 +125,7 @@ export interface ProductionOrderRow {
   unit: string;
   products: OrderProductLine[];
   status: string;
+  displayStatus?: string;
   customer: string;
   orderRef: string;
   /** Cột `ngay` trên lenh_sx — dùng cho nhóm ngày / KH SX / in. */
@@ -1918,7 +1919,6 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
   const [editingPlan, setEditingPlan] = useState<ProductionPlanHistorySummary | null>(null);
   const [editLines, setEditLines] = useState<ProductionPlanLine[]>([]);
   const [deletingPlanId, setDeletingPlanId] = useState('');
-  const [phanCongAddTick, setPhanCongAddTick] = useState(0);
   const [boardLines, setBoardLines] = useState<ProductionPlanBoardLine[]>([]);
   const [boardProducts, setBoardProducts] = useState<ProductRow[]>([]);
   const [boardExtraMachines, setBoardExtraMachines] = useState<string[]>([]);
@@ -2280,7 +2280,12 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
           unit: line.products[0]?.unit || '',
           products: line.products,
           status: '', orderRef: line.orderRef, position: line.machine !== '-' ? line.machine : line.position,
-          staff: line.staff, shift: line.shift, priority: line.priority, note: line.note
+          staff: line.staff,
+          shiftLead: line.shiftLead,
+          mainStaff: line.mainStaff,
+          assistantStaff: line.assistantStaff,
+          traineeStaff: line.traineeStaff,
+          shift: line.shift, priority: line.priority, note: line.note
         };
       }));
       setEditingPlan(plan);
@@ -2309,33 +2314,29 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
         <div className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="min-w-0">
-              <h2 className="text-sm font-black text-zinc-950 sm:text-base">Kế hoạch SX &amp; Kế hoạch CV</h2>
+              <h2 className="text-sm font-black text-zinc-950 sm:text-base">Kế hoạch sản xuất và công việc</h2>
               <p className="mt-0.5 text-[11px] font-semibold text-zinc-500">
                 Cùng một màn hình — lọc ngày dùng chung, xem cả lệnh SX và phân công CV.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {canCreate ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => void openCreatePlan()}
-                    disabled={isLoadingCreate}
-                    className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-[#ef1b2d] px-4 text-sm font-extrabold text-white transition hover:bg-[#b30d1c] disabled:opacity-60"
-                  >
-                    {isLoadingCreate ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                    Thêm KH SX
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPhanCongAddTick(tick => tick + 1)}
-                    className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-4 text-sm font-extrabold text-zinc-800 transition hover:bg-zinc-50"
-                  >
-                    <Plus className="h-4 w-4" />
-                    Thêm dòng CV
-                  </button>
-                </>
+                <button
+                  type="button"
+                  onClick={() => void openCreatePlan()}
+                  disabled={isLoadingCreate}
+                  className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-[#ef1b2d] px-4 text-sm font-extrabold text-white transition hover:bg-[#b30d1c] disabled:opacity-60"
+                >
+                  {isLoadingCreate ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                  Thêm KH SX
+                </button>
               ) : null}
+              <a
+                href="#phan-cong-cong-viec"
+                className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-4 text-sm font-extrabold text-zinc-800 transition hover:bg-zinc-50"
+              >
+                Phân công công việc
+              </a>
             </div>
           </div>
 
@@ -2629,12 +2630,11 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
       </div>
       </div>
 
-      <div>
-        <h3 className="mb-2 px-0.5 text-xs font-black uppercase tracking-wider text-[#ef1b2d]">Kế hoạch CV</h3>
+      <div id="phan-cong-cong-viec" className="scroll-mt-4">
+        <h3 className="mb-2 px-0.5 text-xs font-black uppercase tracking-wider text-[#ef1b2d]">Kế hoạch công việc</h3>
         <PhanCongCvPanel
           defaultDate={filterDate || selectedPlan?.planDate || todayDateInputValue()}
           canEdit={canCreate || canEdit}
-          addRowTick={phanCongAddTick}
         />
       </div>
       </div>
@@ -4234,6 +4234,7 @@ export function normalizeProductionOrders(data: unknown): ProductionOrderRow[] {
         unit: summary.unit,
         products,
         status: pickText(record, ['trang_thai', 'status', 'tinh_trang'], '-'),
+        displayStatus: pickText(record, ['trang_thai_hien_thi'], '') || undefined,
         customer: pickText(record, ['khach_hang', 'customer', 'ten_khach_hang'], '-'),
         orderRef: pickText(record, ['ma_don_hang', 'don_hang', 'order_code'], '-'),
         // Form/UI «Ngày»: ưu tiên cột ngay; fallback ngay_bat_dau (khi ngay generated/không ghi được).
@@ -7282,7 +7283,7 @@ export function ProductionOrderDetailBody({
           {[
             ['Mã lệnh', row.code],
             ['Tên lệnh', row.name],
-            ['Trạng thái', row.status],
+            ['Trạng thái', row.displayStatus ?? row.status],
             ['Khách hàng', row.customer],
             ['Đơn hàng', row.orderRef],
             ['Ca', row.shift],

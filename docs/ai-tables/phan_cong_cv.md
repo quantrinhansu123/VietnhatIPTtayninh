@@ -2,7 +2,7 @@
 
 | **Bảng** | `phan_cong_cv` |
 | **Tab** | `/ke-hoach-san-xuat` (cùng màn với Kế hoạch SX) |
-| **SQL** | `supabase-phan-cong-cv.sql` |
+| **SQL** | `supabase-phan-cong-cv.sql`, sau đó `supabase-phan-cong-cv-gio.sql` |
 
 **API:** `server.ts` — `GET/PUT/DELETE /api/phan-cong-cv` (sau `/api/phieu-giao-ca`)
 
@@ -16,12 +16,14 @@
 
 ## Cột
 
-`id`, `ngay`, `ca`, `cong_viec`, `nhan_su_phu_trach`, `ghi_chu`, `thanh_pham`, `dm_thanh_pham_TT`
+`id`, `ngay`, `ca`, `gio`, `cong_viec`, `nhan_su_phu_trach`, `ghi_chu`, `thanh_pham`, `dm_thanh_pham_TT`
+
+Ngày và ca áp dụng cho cả kế hoạch. Mỗi dòng cần giờ, nhân sự phụ trách và công việc khi lưu. Dòng cũ có thể chưa có giờ.
 
 ## API
 
 - `GET /api/phan-cong-cv?ngay=&ca=` → `{ rows, total }`
-- `PUT /api/phan-cong-cv` body `{ ngay, ca, items[] }` — xóa rồi ghi lại theo Ngày + Ca
+- `PUT /api/phan-cong-cv` nhận `{ ngay, ca, items: [...] }` và thay các dòng của ngày + ca trong một giao dịch qua `phan_cong_cv_replace`. Mảng rỗng xóa kế hoạch của ngày + ca đó.
 - `DELETE /api/phan-cong-cv/:id`
 
 **UI chọn:**

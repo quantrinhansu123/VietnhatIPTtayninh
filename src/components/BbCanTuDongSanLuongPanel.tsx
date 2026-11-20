@@ -169,7 +169,7 @@ export default function BbCanTuDongSanLuongPanel({
                         url={coreUrl}
                         alt={coreTitle}
                         title={coreTitle}
-                        onClick={() => setViewingImage({ url: coreUrl, title: coreTitle })}
+                        onView={() => setViewingImage({ url: coreUrl, title: coreTitle })}
                       />
                     ) : (
                       <span className="text-xs font-bold text-zinc-400">—</span>
@@ -181,7 +181,7 @@ export default function BbCanTuDongSanLuongPanel({
                         url={productUrl}
                         alt={productTitle}
                         title={productTitle}
-                        onClick={() => setViewingImage({ url: productUrl, title: productTitle })}
+                        onView={() => setViewingImage({ url: productUrl, title: productTitle })}
                       />
                     ) : (
                       <span className="text-xs font-bold text-zinc-400">—</span>

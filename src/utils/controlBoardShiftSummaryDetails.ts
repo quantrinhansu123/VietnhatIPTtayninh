@@ -515,20 +515,9 @@ export function getShiftSummaryDetail(input: {
     const rows: ShiftSummaryDetailRow[] = [];
     let total = 0;
     const materialRowsForLoiHong = (input.materials ?? []).map(material => ({
-      id: material.code,
       code: material.code,
       name: material.name || material.code,
-      unit: '',
-      warehouse: material.warehouse || '',
-      totalWeight: material.totalWeight,
-      plasticWeight: '',
-      bagWeight: '',
-      coreWeight: '',
-      rollWidth: '',
-      unitLength: '',
-      openingStock: '',
-      inbound: '',
-      outbound: ''
+      totalWeight: material.totalWeight
     }));
 
     for (const report of input.acceptanceReports) {

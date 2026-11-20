@@ -389,27 +389,27 @@ export function buildWeighingEditPending(
   };
 }
 
-export function isSlipHeaderRow(
-  row: Pick<
-    WeighingRecord,
-    | 'weighNo'
-    | 'productName'
-    | 'productCode'
-    | 'weight'
-    | 'coreWeight'
-    | 'shellWeight'
-    | 'acceptanceStatus'
-    | 'note'
-    | 'imageUrl'
-    | 'coreWeightImageUrl'
-    | 'materialType'
-    | 'materialCode'
-    | 'materialQuantity'
-    | 'plasticNoFilmWeight'
-    | 'plasticNozzleWeight'
-    | 'plasticFilmAdhesionWeight'
-  >
-) {
+type WeighingDataRow = Pick<
+  WeighingRecord,
+  | 'weighNo'
+  | 'productName'
+  | 'productCode'
+  | 'weight'
+  | 'coreWeight'
+  | 'shellWeight'
+  | 'acceptanceStatus'
+  | 'note'
+  | 'imageUrl'
+  | 'coreWeightImageUrl'
+  | 'materialType'
+  | 'materialCode'
+  | 'materialQuantity'
+  | 'plasticNoFilmWeight'
+  | 'plasticNozzleWeight'
+  | 'plasticFilmAdhesionWeight'
+>;
+
+export function isSlipHeaderRow(row: WeighingDataRow) {
   return (
     !row.weighNo?.trim() &&
     !row.productName?.trim() &&
@@ -430,7 +430,7 @@ export function isSlipHeaderRow(
   );
 }
 
-export function getWeighingDataRows<T extends WeighingRecord>(rows: T[]) {
+export function getWeighingDataRows<T extends WeighingDataRow>(rows: T[]) {
   return rows.filter(row => !isSlipHeaderRow(row));
 }
 
@@ -439,7 +439,7 @@ export function parseWeighRoundNumber(weighNo: string | number | undefined) {
   return Number.isFinite(value) && value > 0 ? value : 0;
 }
 
-export function getMaxWeighRoundNumber(rows: WeighingRecord[]) {
+export function getMaxWeighRoundNumber(rows: WeighingDataRow[]) {
   return getWeighingDataRows(rows).reduce(
     (max, row) => Math.max(max, parseWeighRoundNumber(row.weighNo)),
     0
@@ -447,17 +447,17 @@ export function getMaxWeighRoundNumber(rows: WeighingRecord[]) {
 }
 
 /** Lần cân đang nhập — giữ nguyên lần hiện tại để thêm nhiều SP trong cùng lần. */
-export function getCurrentWeighRound(rows: WeighingRecord[]) {
+export function getCurrentWeighRound(rows: WeighingDataRow[]) {
   const maxRound = getMaxWeighRoundNumber(rows);
   return maxRound > 0 ? String(maxRound) : '1';
 }
 
 /** Lần cân tiếp theo — khi bắt đầu lần cân mới. */
-export function getNextWeighRoundNumber(rows: WeighingRecord[]) {
+export function getNextWeighRoundNumber(rows: WeighingDataRow[]) {
   return String(getMaxWeighRoundNumber(rows) + 1);
 }
 
-export function countWeighingRounds(rows: WeighingRecord[]) {
+export function countWeighingRounds(rows: WeighingDataRow[]) {
   const dataRows = getWeighingDataRows(rows);
   if (dataRows.length === 0) return 0;
 

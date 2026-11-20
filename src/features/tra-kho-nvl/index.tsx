@@ -281,7 +281,7 @@ export function TraKhoNvlPanel({
       ]);
 
       const khoNames = [
-        ...new Set(
+        ...new Set<string>(
           (Array.isArray(khoData?.records) ? khoData.records : [])
             .map((row: { ten_kho?: unknown }) => String(row.ten_kho || '').trim())
             .filter(Boolean)
@@ -298,7 +298,7 @@ export function TraKhoNvlPanel({
             ? mayData
             : [];
       const machineNames = [
-        ...new Set(
+        ...new Set<string>(
           machineRows
             .map((row: { ten_may?: unknown; ma_may?: unknown; name?: unknown; code?: unknown }) =>
               String(row.ten_may || row.ma_may || row.name || row.code || '').trim()

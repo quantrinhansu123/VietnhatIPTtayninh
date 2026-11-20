@@ -19,12 +19,14 @@ export type TableId =
   | 'ma_san_pham_chi_tiet'
   | 'danh_sach_may'
   | 'kho_nvl'
+  | 'tra_kho_nvl'
   | 'phieu_kho'
   | 'ton_kho'
   | 'don_hang'
   | 'khach_hang'
   | 'lenh_xuat_hang'
   | 'phieu_ban_hang'
+  | 'giao_hang'
   | 'lenh_sx'
   | 'bc_lsx'
   | 'du_lieu_xuat_kho'
@@ -783,7 +785,7 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
   phan_cong_cv: {
     table: 'phan_cong_cv',
     label: 'Kế hoạch CV (phan_cong_cv)',
-    sql: ['supabase-phan-cong-cv.sql'],
+    sql: ['supabase-phan-cong-cv.sql', 'supabase-phan-cong-cv-gio.sql'],
     apiPrefix: '/api/phan-cong-cv',
     serverLines: 'GET/PUT/DELETE /api/phan-cong-cv (sau /api/phieu-giao-ca)',
     appTab: 'production-plan-history',

@@ -195,7 +195,7 @@ function computeProductionOrderMetrics(
 
 /** Tải danh sách lệnh SX + bù cột Khách hàng từ đơn hàng (dùng chung cho panel & trang chi tiết). */
 export async function fetchProductionOrderRows(): Promise<{ rows: ProductionOrderRow[]; orders: OrderRow[] }> {
-  const [res, orderRes] = await Promise.all([fetch('/api/lenh-sx'), fetch('/api/don-hang')]);
+  const [res, orderRes] = await Promise.all([fetch('/api/lenh-sx?reportStatus=1'), fetch('/api/don-hang')]);
   const [data, orderData] = await Promise.all([
     res.json().catch(() => ({})),
     orderRes.json().catch(() => ({}))
@@ -841,7 +841,7 @@ export function ProductionOrdersPanel({
         if (restrictToOwnAssignments && !productionOrderAssignedToPerson(row, personName)) {
           return false;
         }
-        const matchesStatus = selectedStatus === 'all' || row.status === selectedStatus;
+        const matchesStatus = selectedStatus === 'all' || (row.displayStatus ?? row.status) === selectedStatus;
         const matchesMachine = selectedMachines.length === 0 ||
           selectedMachines.some(machine => productionOrderMachineMatches(machine, row.machine, machines));
         const matchesShift =
@@ -922,7 +922,7 @@ export function ProductionOrdersPanel({
     dateTo
   ]);
 
-  const activeCount = filteredRows.filter(row => /đang|cho|chờ|active|sx/i.test(row.status)).length;
+  const activeCount = filteredRows.filter(row => /đang|cho|chờ|active|sx/i.test(row.displayStatus ?? row.status)).length;
   const productByCode = useMemo(() => buildProductCatalogCodeMap(catalogProducts), [catalogProducts]);
   const metricsById = useMemo(() => {
     const map = new Map<string, ProductionOrderMetrics>();
@@ -1241,7 +1241,7 @@ export function ProductionOrdersPanel({
           setShowAddForm(false);
           setSeedOrderForAdd(null);
         }}
-        onCreated={loadProductionOrders}
+        onCreated={async () => { await loadProductionOrders(); }}
       />
 
       <OrderFormModal
@@ -1268,7 +1268,7 @@ export function ProductionOrdersPanel({
         catalogProducts={catalogProducts}
         machines={machines}
         onClose={() => setEditingRow(null)}
-        onSaved={loadProductionOrders}
+        onSaved={async () => { await loadProductionOrders(); }}
       />
 
       {!isLoading && dateGroups.length === 0 ? (
@@ -1358,7 +1358,7 @@ export function ProductionOrdersPanel({
                                 Ca: {row.shift || '-'} · Máy: {row.machine || '-'}
                               </p>
                             </div>
-                            <StatusBadge label={row.status} color="amber" />
+                            <StatusBadge label={row.displayStatus ?? row.status} color="amber" />
                           </div>
 
                           <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
@@ -1457,7 +1457,7 @@ export function ProductionOrdersPanel({
                         <td className="whitespace-nowrap px-2 py-2 align-top text-zinc-700">{row.shift || '-'}</td>
                         <td className="break-words px-2 py-2 align-top leading-4 text-zinc-600">{row.machine}</td>
                         <td className="whitespace-nowrap px-2 py-2 align-top">
-                          <StatusBadge label={row.status} color="amber" />
+                          <StatusBadge label={row.displayStatus ?? row.status} color="amber" />
                         </td>
                         <td className="whitespace-nowrap px-2 py-2 text-right align-top font-mono font-bold tabular-nums text-zinc-900">
                           {rowMetrics && rowMetrics.totalQuantity > 0

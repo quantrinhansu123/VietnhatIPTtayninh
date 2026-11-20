@@ -974,20 +974,9 @@ export function buildControlBoardShiftSummary(input: {
   // KL lõi không lấy từ phiếu cân ca; lấy từ SL cuộn thực tế (báo cáo sản lượng) × 1kg.
 
   const materialRowsForLoiHong = (input.materials ?? []).map(material => ({
-    id: material.code,
     code: material.code,
     name: material.name || material.code,
-    unit: '',
-    warehouse: material.warehouse || '',
-    totalWeight: material.totalWeight,
-    plasticWeight: '',
-    bagWeight: '',
-    coreWeight: '',
-    rollWidth: '',
-    unitLength: '',
-    openingStock: '',
-    inbound: '',
-    outbound: ''
+    totalWeight: material.totalWeight
   }));
 
   for (const report of input.acceptanceReports) {

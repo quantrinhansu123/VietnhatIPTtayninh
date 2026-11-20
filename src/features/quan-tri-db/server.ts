@@ -192,6 +192,7 @@ export function dbAdminRouter(targets: DbAdminTargetInput[]) {
 
       if (error) return res.status(500).json({ error: error.message });
 
+      const rows = data ?? [];
       let primaryKeys: string[] = [];
       if (target.pgUrl) {
         try {
@@ -201,14 +202,14 @@ export function dbAdminRouter(targets: DbAdminTargetInput[]) {
         }
       }
       if (primaryKeys.length === 0) {
-        primaryKeys = guessPrimaryKeys((data?.[0] as Record<string, unknown> | undefined) || undefined);
+        primaryKeys = guessPrimaryKeys(rows[0]);
       }
 
       return res.json({
         db: target.id,
         table,
-        rows: data || [],
-        total: typeof count === 'number' ? count : (data || []).length,
+        rows,
+        total: count ?? rows.length,
         limit,
         offset,
         primaryKeys

@@ -357,8 +357,6 @@ export default function ControlBoardShiftSummaryTable({
       onDeleteWeighingRecords={onDeleteWeighingRecords}
       onDeleteWarehouseSlip={onDeleteWarehouseSlip}
       onDeleteWarehouseSlips={onDeleteWarehouseSlips}
-      onOpenReportHistoryModal={onOpenReportHistoryModal}
-      onOpenReportListsModal={onOpenReportListsModal}
       onDeleteMachineNvlReport={onDeleteMachineNvlReport}
       onDeleteMachineNvlReports={onDeleteMachineNvlReports}
     />

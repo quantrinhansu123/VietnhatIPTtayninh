@@ -12,7 +12,12 @@ import { machineSlipCodeToken } from './src/utils/warehouseSlipCode';
 import { isCloudinaryUploadUrl } from './src/utils/cloudinaryUrl';
 import { normalizeStaffViewPermissions } from './src/features/nhan-su/menuViews';
 import { normalizeAssignablePositions } from './src/features/cai-dat-thoi-gian/staffAssignments';
+import { productionOrderMachineMatches } from './src/features/lenh-sx/machineFilter';
+import { normalizeProductCodeKey } from './src/features/san-pham/types';
+import { parseCanTuDongQrProductCode } from './src/utils/canTuDongWeights';
+import { parseDateToIso } from './src/utils/dateFormat';
 import { nextProductionOrderCode } from './src/utils/productionOrderCode';
+import { shiftNamesMatch } from './src/utils/shiftSettings';
 import { canonicalizeMaterialCodePayload } from './src/utils/materialCodeAliases';
 import { materialConversionRouter } from './src/features/quy-doi-vat-lieu/server';
 import { buildSupabasePgUrl, dbAdminRouter } from './src/features/quan-tri-db/server';
@@ -5383,21 +5388,18 @@ function phanCongCvWriteError(error: { code?: string; message?: string }) {
   if (isMissingTableError(error)) {
     return `Bảng ${SUPABASE_PHAN_CONG_CV_TABLE} chưa tồn tại. Hãy chạy supabase-phan-cong-cv.sql.`;
   }
-  if (isMissingColumnError(error)) {
-    return `Bảng ${SUPABASE_PHAN_CONG_CV_TABLE} đang thiếu cột (${error.message}). Hãy chạy supabase-phan-cong-cv.sql.`;
+  if (isMissingColumnError(error) || error.code === 'PGRST202' || error.code === '42883') {
+    return 'Phân công công việc chưa có cấu hình lưu giờ. Hãy chạy supabase-phan-cong-cv-gio.sql.';
   }
   return `Không thể lưu phân công công việc. ${error.message || ''}`.trim();
 }
 
-function parsePhanCongCvRow(source: unknown): Record<string, unknown> | null {
-  if (!source || typeof source !== 'object') return null;
-  const record = source as Record<string, unknown>;
-  const ngayRaw = String(record.ngay ?? record.date ?? '').trim();
-  const ngay = ngayRaw ? parseWarehouseSlipDate(ngayRaw) || ngayRaw.slice(0, 10) : null;
-  const ca = String(record.ca ?? record.shift ?? '').trim() || null;
-  const cong_viec = String(record.cong_viec ?? record.congViec ?? record.job ?? '').trim() || null;
+function parsePhanCongCvRow(source: unknown) {
+  const record = source && typeof source === 'object' ? source as Record<string, unknown> : {};
+  const gio = String(record.gio ?? record.time ?? '').trim();
+  const cong_viec = String(record.cong_viec ?? record.congViec ?? record.job ?? '').trim();
   const nhan_su_phu_trach =
-    String(record.nhan_su_phu_trach ?? record.nhanSuPhuTrach ?? record.assignee ?? '').trim() || null;
+    String(record.nhan_su_phu_trach ?? record.nhanSuPhuTrach ?? record.assignee ?? '').trim();
   const ghi_chu = String(record.ghi_chu ?? record.note ?? '').trim() || null;
   const thanh_pham = String(record.thanh_pham ?? record.product ?? '').trim() || null;
   const dm_thanh_pham_TT =
@@ -5409,13 +5411,8 @@ function parsePhanCongCvRow(source: unknown): Record<string, unknown> | null {
         ''
     ).trim() || null;
 
-  if (!ngay && !ca && !cong_viec && !nhan_su_phu_trach && !ghi_chu && !thanh_pham && !dm_thanh_pham_TT) {
-    return null;
-  }
-
   return {
-    ngay,
-    ca,
+    gio,
     cong_viec,
     nhan_su_phu_trach,
     ghi_chu,
@@ -6326,11 +6323,7 @@ function parseMachineRunLogBody(body: unknown): { error: string } | { record: Re
   const incidents =
     su_co.length > 0
       ? su_co
-      : legacyLines.filter(
-          line =>
-            String((line as { loai?: string }).loai || '').toLowerCase() === 'su_co' ||
-            Boolean((line as { ten_su_co?: string }).ten_su_co)
-        );
+      : legacyLines.filter(line => 'ten_su_co' in line);
   const chi_tiet = su_co.length > 0 ? su_co : legacyLines;
 
   const runMinutesFromClock = calcDowntimeMinutes(gio, gio_dung);
@@ -9138,6 +9131,79 @@ async function enrichProductionOrdersWithDong(
   });
 }
 
+async function enrichProductionOrdersWithReportStatus(orders: Record<string, unknown>[]) {
+  if (!supabase) return orders;
+
+  const ordersByDate = new Map<string, { order: Record<string, unknown>; shift: string; machine: string; products: Set<string> }[]>();
+  for (const order of orders) {
+    const date = parseDateToIso(pickRowField(order, ['ngay', 'ngay_bat_dau', 'ngay_gio_bat_dau', 'start_date']));
+    const shift = pickRowField(order, ['ca', 'shift']);
+    const machine = pickRowField(order, ['may', 'ten_may', 'ma_may', 'machine']);
+    if (!date || !shift || shift === '-' || !machine || machine === '-' || machine.toUpperCase() === 'ALL') continue;
+
+    const products = new Set(
+      parseOrderProductsFromRow(order).map(product => normalizeProductCodeKey(product.ma_sp || product.ten_sp))
+    );
+    if (!products.size) continue;
+    const candidates = ordersByDate.get(date) ?? [];
+    candidates.push({ order, shift, machine, products });
+    ordersByDate.set(date, candidates);
+  }
+  if (!ordersByDate.size) return orders;
+
+  const machinesResult = await runOnSupabaseTableWithFallback(SUPABASE_MACHINES_TABLE, async client =>
+    await client.from(SUPABASE_MACHINES_TABLE).select('id, ma_may, ten_may')
+  );
+  const machines = (machinesResult.data ?? []).map(machine => ({
+    id: String(machine.id ?? ''),
+    code: String(machine.ma_may ?? ''),
+    name: String(machine.ten_may ?? '')
+  }));
+
+  const completed = new Set<Record<string, unknown>>();
+  const dates = [...ordersByDate.keys()];
+  const dateBatchSize = 100;
+  const pageSize = 500;
+  for (let start = 0; start < dates.length; start += dateBatchSize) {
+    const dateBatch = dates.slice(start, start + dateBatchSize);
+    for (let offset = 0; ; offset += pageSize) {
+      const { data, error } = await supabase
+        .from(SUPABASE_ACCEPTANCE_REPORTS_TABLE)
+        .select('ngay, ca, ma_may, ten_may, mat_hang')
+        .in('ngay', dateBatch)
+        .or('loai_vat_tu.in.("Thành phẩm","Gia công"),loai_vat_tu.is.null')
+        .order('id')
+        .range(offset, offset + pageSize - 1);
+      if (error) {
+        console.error('Supabase production order report status error:', error);
+        return orders;
+      }
+
+      for (const report of data ?? []) {
+        const dateOrders = ordersByDate.get(report.ngay) ?? [];
+        const reportMachines = [report.ma_may, report.ten_may].filter(Boolean);
+        if (reportMachines.length === 2) reportMachines.push(reportMachines.join(' · '));
+        const candidates = dateOrders.filter(candidate =>
+          shiftNamesMatch(candidate.shift, report.ca) &&
+          reportMachines.some(machine => productionOrderMachineMatches(candidate.machine, machine, machines))
+        );
+        const code = normalizeProductCodeKey(report.mat_hang);
+        if (!code) continue;
+        let matches = candidates.filter(candidate => candidate.products.has(code));
+        if (!matches.length) {
+          const baseCode = normalizeProductCodeKey(parseCanTuDongQrProductCode(report.mat_hang));
+          if (baseCode !== code) matches = candidates.filter(candidate => candidate.products.has(baseCode));
+        }
+        // Dữ liệu báo cáo cũ chỉ có ngày, ca, máy và sản phẩm. Chỉ gán khi xác định đúng một lệnh.
+        if (matches.length === 1) completed.add(matches[0].order);
+      }
+      if ((data?.length ?? 0) < pageSize) break;
+    }
+  }
+
+  return orders.map(order => completed.has(order) ? { ...order, trang_thai_hien_thi: 'Hoàn thành' } : order);
+}
+
 /** Ghi lệnh SX; chịu thiếu/cột generated `ngay` và cột san_pham kiểu text. */
 async function insertProductionOrderRecord(record: Record<string, unknown>) {
   if (!supabase) return { data: null, error: { message: 'Supabase chưa được cấu hình.' } };
@@ -11765,7 +11831,10 @@ export function createApp() {
       }
 
       const rows = Array.isArray(data) ? (data as Array<Record<string, unknown>>) : [];
-      const productionOrders = light ? rows : await enrichProductionOrdersWithDong(rows);
+      const orders = light ? rows : await enrichProductionOrdersWithDong(rows);
+      const productionOrders = !light && _req.query.reportStatus === '1'
+        ? await enrichProductionOrdersWithReportStatus(orders)
+        : orders;
 
       return res.json({
         productionOrders,
@@ -13227,7 +13296,8 @@ export function createApp() {
           .select(selectCols)
           .order('created_at', { ascending: false, nullsFirst: false })
           .order('id', { ascending: false })
-          .range(from, from + PAGE_SIZE - 1);
+          .range(from, from + PAGE_SIZE - 1)
+          .overrideTypes<Record<string, unknown>[], { merge: false }>();
 
         // Cột light thiếu → fallback select * (vẫn bỏ movement totals khi light).
         if (ordered.error && light && selectCols === lightSelect && isMissingColumnError(ordered.error)) {
@@ -13237,7 +13307,8 @@ export function createApp() {
             .select('*')
             .order('created_at', { ascending: false, nullsFirst: false })
             .order('id', { ascending: false })
-            .range(from, from + PAGE_SIZE - 1);
+            .range(from, from + PAGE_SIZE - 1)
+            .overrideTypes<Record<string, unknown>[], { merge: false }>();
         }
 
         if (ordered.error && isMissingColumnError(ordered.error)) {
@@ -13245,12 +13316,13 @@ export function createApp() {
             .from(SUPABASE_MATERIALS_TABLE)
             .select(selectCols === lightSelect ? '*' : selectCols)
             .order('id', { ascending: false })
-            .range(from, from + PAGE_SIZE - 1);
+            .range(from, from + PAGE_SIZE - 1)
+            .overrideTypes<Record<string, unknown>[], { merge: false }>();
           if (fallback.error) {
             queryError = fallback.error;
             break;
           }
-          rows.push(...((fallback.data || []) as Record<string, unknown>[]));
+          rows.push(...(fallback.data ?? []));
           if (!fallback.data || fallback.data.length < PAGE_SIZE) break;
           continue;
         }
@@ -13260,7 +13332,7 @@ export function createApp() {
           break;
         }
 
-        rows.push(...((ordered.data || []) as Record<string, unknown>[]));
+        rows.push(...(ordered.data ?? []));
         if (!ordered.data || ordered.data.length < PAGE_SIZE) break;
       }
 
@@ -19805,9 +19877,10 @@ export function createApp() {
             .eq('dot_kiem_kho', dotKiemKho)
             .order('ngay_gio_kiem_kho', { ascending: true })
             .order('id', { ascending: true });
-          const { data, error } = await query.range(from, from + pageSize - 1);
+          const { data, error } = await query.range(from, from + pageSize - 1)
+            .overrideTypes<Record<string, unknown>[], { merge: false }>();
           if (error) return { rows, error };
-          const page = Array.isArray(data) ? data as Array<Record<string, unknown>> : [];
+          const page = data ?? [];
           rows.push(...page);
           if (page.length < pageSize) return { rows, error: null };
         }
@@ -22595,53 +22668,42 @@ export function createApp() {
     }
   });
 
-  /** Lưu theo Ngày + Ca: xóa dòng cũ cùng khóa rồi insert lại toàn bộ. */
+  /** Thay toàn bộ phân công theo Ngày + Ca trong cùng một giao dịch. */
   app.put('/api/phan-cong-cv', async (req, res) => {
     if (!supabase) {
       return res.status(503).json({ error: 'Supabase chưa được cấu hình.' });
     }
     try {
       const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
-      const ngayRaw = String(body.ngay ?? body.date ?? '').trim();
-      const ngay = ngayRaw ? parseWarehouseSlipDate(ngayRaw) || ngayRaw.slice(0, 10) : '';
+      const ngay = parseDateToIso(body.ngay ?? body.date);
       const ca = String(body.ca ?? body.shift ?? '').trim();
       const rawItems = Array.isArray(body.items)
         ? body.items
         : Array.isArray(body.rows)
           ? body.rows
-          : [];
+          : null;
 
-      if (!ngay) return res.status(400).json({ error: 'Vui lòng chọn ngày.' });
+      if (!ngay) return res.status(400).json({ error: 'Vui lòng chọn ngày hợp lệ.' });
       if (!ca) return res.status(400).json({ error: 'Vui lòng chọn ca.' });
+      if (!rawItems) return res.status(400).json({ error: 'Thiếu danh sách phân công.' });
 
-      const items = rawItems
-        .map(item => {
-          const parsed = parsePhanCongCvRow(item);
-          if (!parsed) return null;
-          return { ...parsed, ngay, ca };
-        })
-        .filter((row): row is Record<string, unknown> => Boolean(row));
-
-      const { error: deleteError } = await supabase
-        .from(SUPABASE_PHAN_CONG_CV_TABLE)
-        .delete()
-        .eq('ngay', ngay)
-        .eq('ca', ca);
-      if (deleteError) {
-        console.error('Supabase phan_cong_cv delete error:', deleteError);
-        return res.status(500).json({ error: phanCongCvWriteError(deleteError) });
+      const items = rawItems.map(parsePhanCongCvRow);
+      const invalidRow = items.findIndex(item =>
+        !/^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(item.gio) ||
+        !item.nhan_su_phu_trach ||
+        !item.cong_viec
+      );
+      if (invalidRow >= 0) {
+        return res.status(400).json({ error: `Dòng ${invalidRow + 1}: nhập giờ hợp lệ, nhân sự và công việc.` });
       }
 
-      if (items.length === 0) {
-        return res.json({ success: true, rows: [], total: 0, ngay, ca });
-      }
-
-      const { data, error } = await supabase
-        .from(SUPABASE_PHAN_CONG_CV_TABLE)
-        .insert(items)
-        .select('*');
+      const { data, error } = await supabase.rpc(`${SUPABASE_PHAN_CONG_CV_TABLE}_replace`, {
+        p_ngay: ngay,
+        p_ca: ca,
+        p_items: items
+      });
       if (error) {
-        console.error('Supabase phan_cong_cv insert error:', error);
+        console.error('Supabase phan_cong_cv replace error:', error);
         return res.status(500).json({ error: phanCongCvWriteError(error) });
       }
       return res.json({ success: true, rows: data || [], total: (data || []).length, ngay, ca });

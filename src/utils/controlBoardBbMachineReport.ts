@@ -2757,7 +2757,10 @@ export function isBbRacMaterialWarehouse(warehouse?: string | null): boolean {
   return key.includes('kho rac') || key.includes('hang rac') || (key.includes('rac') && !key.includes('trac'));
 }
 
-function findBbMaterialRowByAcceptanceCode(materials: MaterialRow[], code: string): MaterialRow | undefined {
+function findBbMaterialRowByAcceptanceCode<T extends Pick<MaterialRow, 'code' | 'name'>>(
+  materials: T[],
+  code: string
+): T | undefined {
   const codeKey = normalizeMaterialCodeKey(code);
   if (!codeKey) return undefined;
   return materials.find(material => {
@@ -3048,6 +3051,10 @@ export function buildBbInboundMaterialNormGroups(input: {
           loiHongGroupBaseSumKg: 0,
           loiHongTiLeTronPercent: tiLeTronPercent,
           tonCuoiKg: roundQty(tonCuoi, 4),
+          tonCuoiFromNnsTron: false,
+          tonCuoiDirectKg: roundQty(tonCuoi, 4),
+          nnsTronTonCuoiKg: 0,
+          tiLeTonCuoiPercent: null,
           realKg: roundQty(real, 4)
         });
       }
@@ -4638,10 +4645,12 @@ export type AcceptanceLoiHongWeightSplit = {
   tongKg: number;
 };
 
+type AcceptanceWeightMaterial = Pick<MaterialRow, 'code' | 'name' | 'totalWeight'>;
+
 /** Phân loại KL lỗi hỏng từ phiếu Báo cáo sản lượng — chỉ tab SP lỗi / SP rác. */
 export function splitAcceptanceLoiHongWeightKg(
   report: AcceptanceReport,
-  materials: MaterialRow[]
+  materials: AcceptanceWeightMaterial[]
 ): AcceptanceLoiHongWeightSplit | null {
   const kg = resolveAcceptanceReportWeightKg(report, materials);
   if (!(kg > 0)) return null;
@@ -4649,11 +4658,11 @@ export function splitAcceptanceLoiHongWeightKg(
   if (isAcceptanceSpRacLoai(report.loai_vat_tu) && isAcceptanceFilmScrapRacMangReport(report)) {
     return { nhuaKg: 0, mangKg: kg, tongKg: kg };
   }
-  if (isAcceptanceHangHongSanLuongReport(report, materials)) {
+  if (isAcceptanceHangHongSanLuongReport(report)) {
     return { nhuaKg: kg, mangKg: 0, tongKg: kg };
   }
   // SP rác khác (trừ rác màng) → mangKg để banner «Vật tư khác» máy bao bì nhận được.
-  if (isAcceptanceHangRacSanLuongReport(report, materials)) {
+  if (isAcceptanceHangRacSanLuongReport(report)) {
     return { nhuaKg: 0, mangKg: kg, tongKg: kg };
   }
   return null;
@@ -4740,7 +4749,7 @@ function acceptanceReportWeightKg(report: AcceptanceReport): number {
 }
 
 /** KL phiếu Báo cáo sản lượng — ưu tiên `trong_luong`, fallback ĐM NVL × SL. */
-function resolveAcceptanceReportWeightKg(report: AcceptanceReport, materials?: MaterialRow[]): number {
+function resolveAcceptanceReportWeightKg(report: AcceptanceReport, materials?: AcceptanceWeightMaterial[]): number {
   const fromField = acceptanceReportWeightKg(report);
   if (fromField > 0) return fromField;
 
@@ -8843,6 +8852,10 @@ export function buildBbSanLuongGroups(input: {
       loiHongGroupBaseSumKg: 0,
       loiHongTiLeTronPercent: null,
       tonCuoiKg: 0,
+      tonCuoiFromNnsTron: false,
+      tonCuoiDirectKg: 0,
+      nnsTronTonCuoiKg: 0,
+      tiLeTonCuoiPercent: null,
       realKg: totalActualWeightKg
     };
 
@@ -11362,7 +11375,7 @@ export function syncBbThucDungRowsXuatTrongNgayFromExportTab(input: {
       headerKey,
       buildKgMapsFromBbTabRowsForHeader(
         xuatKhoTabRows,
-        { ngay: row.ngay, shift: row.shift, orderCode: row.orderCode, machine: row.machine },
+        { ngay: row.ngay, shift: row.shift, orderCode: row.orderCode },
         false,
         true
       )
@@ -12665,6 +12678,8 @@ export type BbTongGroup = {
   tongTpNhapKho: number;
   tongTrongLuongLoiHong: number;
   tongThucDung: number;
+  /** Snapshot cũ có thể chưa lưu tổng xuất. */
+  tongTrongLuongXuatRa?: number;
   tongTrongLuongNhapKho: number;
   chenhLechTrongLuongNhapXuat: number;
   tiLeChenhLechTrongLuong: number;
@@ -12811,6 +12826,7 @@ export function buildBbTongGroups(input: {
       tongTpNhapKho,
       tongTrongLuongLoiHong: tongLoiHong,
       tongThucDung,
+      tongTrongLuongXuatRa: roundQty(xuat.nhua + xuat.mang + xuat.loi + xuat.tui, 4),
       tongTrongLuongNhapKho: metrics.tongTrongLuongNhapKho,
       chenhLechTrongLuongNhapXuat: metrics.chenhLechTrongLuongNhapXuat,
       tiLeChenhLechTrongLuong: metrics.tiLeChenhLechTrongLuong,

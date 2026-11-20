@@ -1337,7 +1337,10 @@ function DeliveryRequestModal({
   onSaved: () => void | Promise<void>;
 }) {
   const [selectedShippingOrderId, setSelectedShippingOrderId] = useState('');
-  const [form, setForm] = useState<Omit<VehicleDeliveryRequest, 'id'>>(() => ({
+  const [form, setForm] = useState<Omit<
+    VehicleDeliveryRequest,
+    'id' | 'vi_do' | 'kinh_do' | 'km_vietmap' | 'km_nhap_tay' | 'km_chot' | 'km_luy_ke'
+  >>(() => ({
     so_yeu_cau: initial?.so_yeu_cau || `YCXH-${new Date().toISOString().slice(0, 10).replaceAll('-', '')}`,
     ngay_yeu_cau: initial?.ngay_yeu_cau || new Date().toISOString().slice(0, 10),
     dia_diem_giao: initial?.dia_diem_giao || '',

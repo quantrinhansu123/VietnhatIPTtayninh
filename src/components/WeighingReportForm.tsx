@@ -848,12 +848,11 @@ export default function WeighingReportForm({
     return `Đã lưu ${count} dòng vào Supabase (phieu_can_dinh_ki).`;
   };
 
-  const [newRow, setNewRow] = useState<Omit<WeighingRow, 'id' | 'weighNo' | 'weighTime' | 'savedToDb'>>({
+  const [newRow, setNewRow] = useState<Omit<WeighingRow, 'id' | 'weighNo' | 'weighTime' | 'savedToDb' | 'weigherName'>>({
     productionDate: today,
     shiftName: '',
     worker1: '',
     worker2: '',
-    weigherName: '',
     productCode: '',
     productName: '',
     machineName: '',

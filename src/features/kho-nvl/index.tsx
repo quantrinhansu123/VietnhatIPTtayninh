@@ -977,7 +977,6 @@ export function MaterialsInventoryPanel({
   const catalogFileInputRef = useRef<HTMLInputElement>(null);
   const [warehouseOptions, setWarehouseOptions] = useState<string[]>([]);
   const [isUploadingMaterialImage, setIsUploadingMaterialImage] = useState(false);
-  const [viewingMaterialImage, setViewingMaterialImage] = useState<WeighingPreviewImage | null>(null);
   const [materialQrPrintLabels, setMaterialQrPrintLabels] = useState<WarehouseProductQrPrintLabel[]>([]);
   const [materialQrPrintOpen, setMaterialQrPrintOpen] = useState(false);
   const [showPrintQtyModal, setShowPrintQtyModal] = useState(false);

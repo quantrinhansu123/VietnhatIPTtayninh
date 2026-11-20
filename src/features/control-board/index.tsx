@@ -566,7 +566,7 @@ export function ControlBoardPanel({
     });
   }, [shiftSummaryWarehouseMovements, productionOrders, machines]);
 
-  const selectedBoardMachine = useMemo(() => {
+  const selectedBoardMachine = useMemo<{ code: string; name?: string } | null>(() => {
     if (!boardFilterMachine || boardFilterMachine === 'all') return null;
     return machines.find(machine => machine.code === boardFilterMachine) ?? { code: boardFilterMachine };
   }, [boardFilterMachine, machines]);
@@ -1900,7 +1900,7 @@ export function ControlBoardPanel({
       <AddProductionOrderModal
         open={showAddProductionOrder}
         onClose={() => setShowAddProductionOrder(false)}
-        onCreated={loadBoard}
+        onCreated={async () => { await loadBoard(); }}
       />
 
       <ProductionOrderViewModal
@@ -1916,13 +1916,13 @@ export function ControlBoardPanel({
         catalogProducts={products}
         machines={machines}
         onClose={() => setEditingProductionOrder(null)}
-        onSaved={loadBoard}
+        onSaved={async () => { await loadBoard(); }}
       />
 
       <ProductionPlanModal
         open={showProductionPlan}
         onClose={() => setShowProductionPlan(false)}
-        onSaved={loadBoard}
+        onSaved={async () => { await loadBoard(); }}
         onOpenWarehouseSlip={() => onNavigate('warehouse-slip')}
         productionOrders={productionOrders}
         seedOrderIds={selectedProductionOrderIds}

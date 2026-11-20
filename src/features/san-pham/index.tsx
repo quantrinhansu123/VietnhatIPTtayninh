@@ -1341,7 +1341,7 @@ export function ProductViewModal({
         if (!xuatRes.ok) throw new Error(xuatData.error || 'Không thể tải phiếu xuất kho.');
 
         const sumMovements = (movements: unknown[]) =>
-          movements.reduce((sum, entry) => {
+          movements.reduce<number>((sum, entry) => {
             if (!entry || typeof entry !== 'object') return sum;
             const qty = Number((entry as Record<string, unknown>).so_luong ?? 0);
             return sum + (Number.isFinite(qty) ? qty : 0);

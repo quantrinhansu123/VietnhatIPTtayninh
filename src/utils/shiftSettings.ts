@@ -4,8 +4,8 @@ export type ShiftSetting = {
   name: string;
   loaiCaiDat: string;
   timeFrame: string;
-  startTime: string;
-  endTime: string;
+  startTime?: string;
+  endTime?: string;
 };
 
 export type ShiftOption = {

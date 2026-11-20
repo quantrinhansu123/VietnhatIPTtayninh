@@ -1190,7 +1190,7 @@ export default function ControlBoardBbMachineReportTable({
       mixingReports: MixingReport[];
       damagedRecords: WeighingRecord[];
       machineNvlReports: MachineNvlSavedReport[];
-    }> | null
+    }> | void | null
   ) => {
     if (!fresh) return;
     reportSourceRef.current = {
@@ -3349,14 +3349,14 @@ export default function ControlBoardBbMachineReportTable({
             ? data
             : [];
         const names = [
-          ...new Set(
+          ...new Set<string>(
             rows
               .map((row: Record<string, unknown>) =>
                 String(row.name ?? row.nhan_su ?? row.ho_ten ?? row.ten ?? '').trim()
               )
               .filter(Boolean)
           )
-        ].sort((a, b) => String(a).localeCompare(String(b), 'vi'));
+        ].sort((a, b) => a.localeCompare(b, 'vi'));
         setHrStaffNames(names);
       } catch {
         /* giữ danh sách từ lệnh SX */

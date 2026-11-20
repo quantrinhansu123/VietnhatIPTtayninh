@@ -641,7 +641,7 @@ export function emptyBbBaoCaoTinhToanPayload(): BbBaoCaoTinhToanPayload {
     mixingGroups: [],
     danhGiaGroups: [],
     summary: {
-      orderTotals: { quantity: 0, totalNormKg: 0 },
+      orderTotals: { quantity: 0, totalNormKg: 0, totalPlasticNormKg: 0 },
       plasticRequiredWeightKg: 0,
       exportTotalKg: 0,
       exportWeightByKind: { plasticKg: 0, otherKg: 0, totalKg: 0 },

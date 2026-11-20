@@ -3,10 +3,10 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
   Legend,
   Line,
   LineChart,
+  Rectangle,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -398,15 +398,24 @@ export default function ControlBoardShiftSummaryChart({
                   cursor={{ fill: CURSOR_WASH }}
                   content={<ChartTooltip formatValue={value => `${value >= 0 ? '+' : ''}${formatMoney(value, 0)} đ`} />}
                 />
-                <Bar name="Tiền lãi/lỗ" dataKey="soTienLoLaiNhua" maxBarSize={22}>
-                  {chartData.map(entry => (
-                    <Cell
-                      key={entry.key}
-                      fill={entry.soTienLoLaiNhua >= 0 ? STATUS_GOOD_GREEN : STATUS_CRITICAL_RED}
-                      radius={entry.soTienLoLaiNhua >= 0 ? [4, 4, 0, 0] : [0, 0, 4, 4]}
-                    />
-                  ))}
-                </Bar>
+                <Bar
+                  name="Tiền lãi/lỗ"
+                  dataKey="soTienLoLaiNhua"
+                  maxBarSize={22}
+                  shape={({ x, y, width, height, value }) => {
+                    const nonNegative = (Array.isArray(value) ? value[1] : value) >= 0;
+                    return (
+                      <Rectangle
+                        x={x}
+                        y={y}
+                        width={width}
+                        height={height}
+                        fill={nonNegative ? STATUS_GOOD_GREEN : STATUS_CRITICAL_RED}
+                        radius={nonNegative ? [4, 4, 0, 0] : [0, 0, 4, 4]}
+                      />
+                    );
+                  }}
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>

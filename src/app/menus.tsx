@@ -66,7 +66,7 @@ import { CanTuDongEntryForm } from '../features/can-tu-dong/entry-form';
 export type MenuCardConfig = {
   title: string;
   desc: string;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
   icon3d?: IconifyIconData;
   tab: AppTab;
   /** Mục chưa có trang — hiển thị tên/icon nhưng không cho bấm vào (làm sau). */

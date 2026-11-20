@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronRight, Loader2, Plus, Printer, Save, Trash2 } from 'lucide-react';
 import { DateInput } from '../../components/shared/DateInput';
@@ -36,6 +36,7 @@ export type PhanCongCvRow = {
   id?: number | string;
   ngay: string;
   ca: string;
+  gio: string;
   congViec: string;
   nhanSuPhuTrach: string;
   thanhPham: string;
@@ -52,6 +53,7 @@ function emptyRow(ngay = '', ca = ''): PhanCongCvRow {
     key: `pcv-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     ngay,
     ca,
+    gio: '',
     congViec: '',
     nhanSuPhuTrach: '',
     thanhPham: '',
@@ -75,6 +77,7 @@ function normalizeRows(data: unknown): PhanCongCvRow[] {
         id: (record.id as number | string | undefined) ?? undefined,
         ngay: String(record.ngay ?? '').slice(0, 10),
         ca: String(record.ca ?? '').trim(),
+        gio: String(record.gio ?? '').slice(0, 5),
         congViec: String(record.cong_viec ?? record.congViec ?? '').trim(),
         nhanSuPhuTrach: String(record.nhan_su_phu_trach ?? record.nhanSuPhuTrach ?? '').trim(),
         thanhPham: String(record.thanh_pham ?? record.thanhPham ?? '').trim(),
@@ -150,6 +153,11 @@ function buildPlanGroups(rows: PhanCongCvRow[]): PlanGroup[] {
   });
 }
 
+function hasAssignmentContent(row: PhanCongCvRow) {
+  return Boolean(row.gio || row.congViec.trim() || row.nhanSuPhuTrach.trim() ||
+    row.thanhPham.trim() || row.dmThanhPhamTT.trim() || row.ghiChu.trim());
+}
+
 const fieldClass =
   'h-9 w-full min-w-0 rounded-lg border border-zinc-200 bg-white px-2 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-red-500/10';
 
@@ -174,14 +182,7 @@ function PhanCongCvPrintSheet({
   rows: PhanCongCvRow[];
 }) {
   const printDate = formatDateDdMmYyyy(ngay) || formatDateDdMmYyyy(new Date());
-  const filled = rows.filter(
-    row =>
-      row.congViec.trim() ||
-      row.nhanSuPhuTrach.trim() ||
-      row.thanhPham.trim() ||
-      row.dmThanhPhamTT.trim() ||
-      row.ghiChu.trim()
-  );
+  const filled = rows.filter(hasAssignmentContent);
 
   return (
     <div className="production-plan-print-sheet">
@@ -205,8 +206,9 @@ function PhanCongCvPrintSheet({
           <thead>
             <tr>
               <th>STT</th>
-              <th>Công việc (task)</th>
+              <th>Giờ</th>
               <th>Nhân sự phụ trách</th>
+              <th>Công việc</th>
               <th>Thành phẩm</th>
               <th>ĐM thành phẩm TT</th>
               <th>Ghi chú</th>
@@ -216,8 +218,9 @@ function PhanCongCvPrintSheet({
             {filled.map((row, index) => (
               <tr key={row.key}>
                 <td className="production-plan-print-center">{index + 1}</td>
-                <td>{row.congViec || '—'}</td>
+                <td className="production-plan-print-center">{row.gio || '—'}</td>
                 <td>{row.nhanSuPhuTrach || '—'}</td>
+                <td>{row.congViec || '—'}</td>
                 <td>{row.thanhPham || '—'}</td>
                 <td className="production-plan-print-center">{row.dmThanhPhamTT || '—'}</td>
                 <td>{row.ghiChu || '—'}</td>
@@ -225,7 +228,7 @@ function PhanCongCvPrintSheet({
             ))}
             {filled.length === 0 ? (
               <tr>
-                <td className="production-plan-print-center" colSpan={6}>
+                <td className="production-plan-print-center" colSpan={7}>
                   Không có dữ liệu phân công công việc.
                 </td>
               </tr>
@@ -250,12 +253,10 @@ function PhanCongCvPrintSheet({
 
 export default function PhanCongCvPanel({
   defaultDate = '',
-  canEdit = true,
-  addRowTick = 0
+  canEdit = true
 }: {
   defaultDate?: string;
   canEdit?: boolean;
-  addRowTick?: number;
 }) {
   const [ngay, setNgay] = useState(defaultDate || todayDateInputValue());
   const [ca, setCa] = useState('');
@@ -274,6 +275,9 @@ export default function PhanCongCvPanel({
   );
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const previousDefaultDate = useRef(defaultDate);
+  const detailRequest = useRef(0);
+  const isSelectionReady = Boolean(selectedKey && selectedKey === `${ngay}|${ca}`);
 
   const planGroups = useMemo(() => buildPlanGroups(allRows), [allRows]);
   const plansByDate = useMemo(() => {
@@ -291,18 +295,7 @@ export default function PhanCongCvPanel({
     return uniqueJobOptions([...DEFAULT_JOB_SUGGESTIONS, ...knownJobs, ...fromRows]);
   }, [knownJobs, rows]);
 
-  const filledCount = useMemo(
-    () =>
-      rows.filter(
-        row =>
-          row.congViec.trim() ||
-          row.nhanSuPhuTrach.trim() ||
-          row.thanhPham.trim() ||
-          row.dmThanhPhamTT.trim() ||
-          row.ghiChu.trim()
-      ).length,
-    [rows]
-  );
+  const filledCount = rows.filter(hasAssignmentContent).length;
 
   const loadAllPlans = async () => {
     setIsLoadingList(true);
@@ -322,8 +315,16 @@ export default function PhanCongCvPanel({
     }
   };
 
-  const loadDetail = async (nextNgay: string, nextCa: string, options?: { quiet?: boolean }) => {
-    if (!nextNgay || !nextCa) return;
+  const loadDetail = useCallback(async (nextNgay: string, nextCa: string, options?: { quiet?: boolean }) => {
+    const request = ++detailRequest.current;
+    setNgay(nextNgay);
+    setCa(nextCa);
+    setSelectedKey('');
+    setRows([emptyRow(nextNgay, nextCa)]);
+    if (!nextNgay || !nextCa) {
+      setIsLoadingDetail(false);
+      return;
+    }
     setIsLoadingDetail(true);
     if (!options?.quiet) {
       setError('');
@@ -333,10 +334,9 @@ export default function PhanCongCvPanel({
       const params = new URLSearchParams({ ngay: nextNgay, ca: nextCa, limit: '500' });
       const res = await fetch(`/api/phan-cong-cv?${params.toString()}`);
       const data = await res.json().catch(() => ({}));
+      if (request !== detailRequest.current) return;
       if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không tải được kế hoạch CV.'));
       const next = normalizeRows(data);
-      setNgay(nextNgay);
-      setCa(nextCa);
       setSelectedKey(`${nextNgay}|${nextCa}`);
       setRows(next.length > 0 ? next : [emptyRow(nextNgay, nextCa)]);
       setKnownJobs(prev => [...prev, ...next.map(row => row.congViec)]);
@@ -344,20 +344,17 @@ export default function PhanCongCvPanel({
         setMessage(next.length > 0 ? `Đã tải ${next.length} dòng.` : 'Chưa có dữ liệu — có thể thêm dòng mới.');
       }
     } catch (err: unknown) {
-      setError(showSaveFailure(err, 'Không tải được kế hoạch CV.'));
+      if (request === detailRequest.current) setError(showSaveFailure(err, 'Không tải được kế hoạch CV.'));
     } finally {
-      setIsLoadingDetail(false);
+      if (request === detailRequest.current) setIsLoadingDetail(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    if (defaultDate) setNgay(defaultDate);
-  }, [defaultDate]);
-
-  useEffect(() => {
-    if (!addRowTick || !canEdit) return;
-    setRows(prev => [...prev, emptyRow(ngay, ca)]);
-  }, [addRowTick, canEdit, ngay, ca]);
+    if (defaultDate === previousDefaultDate.current) return;
+    previousDefaultDate.current = defaultDate;
+    if (defaultDate) void loadDetail(defaultDate, ca);
+  }, [defaultDate, ca, loadDetail]);
 
   useEffect(() => {
     let alive = true;
@@ -376,7 +373,7 @@ export default function PhanCongCvPanel({
         setStaffOptions(staff);
 
         const firstCa = String(options[0]?.value || '');
-        const preferredNgay = defaultDate || todayDateInputValue();
+        const preferredNgay = previousDefaultDate.current || todayDateInputValue();
         const preferred =
           plans.find(row => row.ngay === preferredNgay) ||
           plans[0] ||
@@ -384,7 +381,6 @@ export default function PhanCongCvPanel({
         const nextNgay = preferred?.ngay || preferredNgay;
         const nextCa = preferred?.ca || firstCa;
         if (nextCa) {
-          setCa(nextCa);
           void loadDetail(nextNgay, nextCa, { quiet: true });
         }
       })
@@ -436,24 +432,23 @@ export default function PhanCongCvPanel({
   };
 
   const saveRows = async () => {
-    if (!ngay || !ca) {
-      setError(showSaveFailure('Vui lòng chọn ngày và ca.'));
+    if (!isSelectionReady || isSaving || !filledCount) return;
+    const invalidRow = rows.findIndex(row =>
+      hasAssignmentContent(row) && (!row.gio || !row.nhanSuPhuTrach.trim() || !row.congViec.trim())
+    );
+    if (invalidRow >= 0) {
+      setError(showSaveFailure(`Dòng ${invalidRow + 1}: nhập giờ, nhân sự và công việc.`));
       return;
     }
     setIsSaving(true);
     setError('');
     setMessage('');
+    const request = detailRequest.current;
     try {
       const items = rows
-        .filter(
-          row =>
-            row.congViec.trim() ||
-            row.nhanSuPhuTrach.trim() ||
-            row.thanhPham.trim() ||
-            row.dmThanhPhamTT.trim() ||
-            row.ghiChu.trim()
-        )
+        .filter(hasAssignmentContent)
         .map(row => ({
+          gio: row.gio,
           cong_viec: row.congViec.trim(),
           nhan_su_phu_trach: row.nhanSuPhuTrach.trim(),
           thanh_pham: row.thanhPham.trim(),
@@ -470,8 +465,10 @@ export default function PhanCongCvPanel({
       if (!res.ok) throw new Error(readApiErrorMessage(res, data, 'Không thể lưu kế hoạch CV.'));
 
       const next = normalizeRows(data).map(row => ({ ...row, ngay, ca }));
-      setRows(next.length > 0 ? next : [emptyRow(ngay, ca)]);
-      setSelectedKey(`${ngay}|${ca}`);
+      if (request === detailRequest.current) {
+        setRows(next.length > 0 ? next : [emptyRow(ngay, ca)]);
+        setSelectedKey(`${ngay}|${ca}`);
+      }
       setKnownJobs(prev => [...prev, ...next.map(row => row.congViec)]);
       await loadAllPlans();
       const okMsg = `Đã lưu ${next.length} dòng kế hoạch CV (${ngay} · ${ca}).`;
@@ -501,7 +498,7 @@ export default function PhanCongCvPanel({
           await loadDetail(first.ngay, first.ca, { quiet: true });
         } else {
           setRows([emptyRow(ngay, ca)]);
-          setSelectedKey('');
+          setSelectedKey(`${ngay}|${ca}`);
         }
       }
       showAppToast(`Đã xóa kế hoạch CV ${plan.ngay} · ${plan.ca}.`);
@@ -511,14 +508,7 @@ export default function PhanCongCvPanel({
   };
 
   const printRows = (nextNgay: string, nextCa: string, nextRows: PhanCongCvRow[]) => {
-    const filled = nextRows.filter(
-      row =>
-        row.congViec.trim() ||
-        row.nhanSuPhuTrach.trim() ||
-        row.thanhPham.trim() ||
-        row.dmThanhPhamTT.trim() ||
-        row.ghiChu.trim()
-    );
+    const filled = nextRows.filter(hasAssignmentContent);
     if (filled.length === 0) {
       setError('Chưa có dòng để in.');
       return;
@@ -556,7 +546,7 @@ export default function PhanCongCvPanel({
           <div className="border-b border-zinc-200 bg-zinc-50 px-4 py-3">
             <h3 className="text-sm font-black text-zinc-950">Danh sách kế hoạch CV</h3>
             <p className="mt-0.5 text-[11px] font-semibold text-zinc-500">
-              {planGroups.length} bản ghi · task việc + NV HCM
+              {planGroups.length} kế hoạch đã lưu
             </p>
           </div>
           <div className="max-h-[70vh] overflow-auto">
@@ -567,7 +557,7 @@ export default function PhanCongCvPanel({
               </p>
             ) : planGroups.length === 0 ? (
               <p className="px-4 py-8 text-center text-sm font-semibold text-zinc-500">
-                Chưa có kế hoạch CV đã lưu. Chọn Ngày + Ca bên phải rồi Lưu.
+                Chưa có kế hoạch công việc đã lưu.
               </p>
             ) : (
               <div className="divide-y divide-zinc-100">
@@ -576,7 +566,7 @@ export default function PhanCongCvPanel({
                   return (
                     <div key={date}>
                       <div className="sticky top-0 flex items-center justify-between gap-2 border-b border-zinc-200 bg-[#e8f0ed] px-4 py-2">
-                        <span className="text-xs font-semibold tracking-wide text-zinc-700">{date}</span>
+                        <span className="text-xs font-semibold tracking-wide text-zinc-700">{formatDateDdMmYyyy(date)}</span>
                         <span className="font-mono text-xs font-bold text-zinc-500">{dateRowTotal} dòng</span>
                       </div>
                       {datePlans.map(plan => (
@@ -588,13 +578,14 @@ export default function PhanCongCvPanel({
                         >
                           <button
                             type="button"
+                            disabled={isSaving}
                             onClick={() => void loadDetail(plan.ngay, plan.ca)}
                             className="flex w-full items-start justify-between gap-3 text-left"
                           >
                             <div className="min-w-0">
                               <p className="text-sm font-black text-zinc-950">{plan.ca}</p>
                               <p className="mt-0.5 text-xs font-semibold text-zinc-600">
-                                {plan.rowCount} task · {plan.ngay}
+                                {plan.rowCount} phân công
                               </p>
                             </div>
                             <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-zinc-400" />
@@ -602,6 +593,7 @@ export default function PhanCongCvPanel({
                           <div className="mt-2 flex flex-wrap gap-1.5 border-t border-zinc-200/70 pt-2">
                             <button
                               type="button"
+                              disabled={isSaving}
                               onClick={() => void loadDetail(plan.ngay, plan.ca)}
                               className="inline-flex h-7 items-center gap-1 rounded-lg border border-sky-200 bg-sky-50 px-2 text-[11px] font-bold text-sky-700"
                             >
@@ -609,6 +601,7 @@ export default function PhanCongCvPanel({
                             </button>
                             <button
                               type="button"
+                              disabled={isSaving}
                               onClick={() => void printPlan(plan)}
                               className="inline-flex h-7 items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2 text-[11px] font-bold text-red-700"
                             >
@@ -618,6 +611,7 @@ export default function PhanCongCvPanel({
                             {canEdit ? (
                               <button
                                 type="button"
+                                disabled={isSaving}
                                 onClick={() => void deletePlan(plan)}
                                 className="inline-flex h-7 items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 text-[11px] font-bold text-rose-700"
                               >
@@ -638,23 +632,15 @@ export default function PhanCongCvPanel({
 
         <section className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 bg-zinc-50 px-4 py-3">
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#ef1b2d]">Kế hoạch CV</p>
-              <h3 className="text-sm font-black text-zinc-950">Chi tiết phân công công việc</h3>
-              <p className="mt-0.5 text-[11px] font-semibold text-zinc-500">
-                Công việc = task việc · Nhân sự HCM
-                {isLoadingLookups ? ' · Đang tải danh mục...' : ` · ${jobOptions.length} task · ${staffOptions.length} NV`}
-              </p>
-            </div>
+            <h3 className="text-sm font-black text-zinc-950">Phân công công việc</h3>
             <div className="flex flex-wrap items-end gap-2">
               <label className="space-y-1">
                 <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Ngày</span>
                 <DateInput
                   value={ngay}
-                  onChange={next => {
-                    setNgay(next);
-                    if (ca) void loadDetail(next, ca);
-                  }}
+                  aria-label="Ngày phân công"
+                  disabled={isSaving}
+                  onChange={next => void loadDetail(next, ca)}
                   className="h-10 w-full min-w-[9rem] rounded-lg border border-zinc-200 px-3 pr-10 text-sm font-semibold text-zinc-800 outline-none focus:border-[#ef1b2d] focus:ring-2 focus:ring-[#ef1b2d]/10"
                 />
               </label>
@@ -663,10 +649,8 @@ export default function PhanCongCvPanel({
                 <div className="min-w-[11rem]">
                   <SearchableSelect
                     value={ca}
-                    onChange={next => {
-                      setCa(next);
-                      if (ngay) void loadDetail(ngay, next);
-                    }}
+                    disabled={isSaving}
+                    onChange={next => void loadDetail(ngay, next)}
                     options={shiftOptions}
                     placeholder="Chọn ca"
                     searchPlaceholder="Tìm ca..."
@@ -680,7 +664,7 @@ export default function PhanCongCvPanel({
               <button
                 type="button"
                 onClick={printCurrent}
-                disabled={filledCount === 0 || isLoadingDetail}
+                disabled={filledCount === 0 || !isSelectionReady || isSaving}
                 className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-[#ef1b2d] px-4 text-sm font-extrabold text-white transition hover:bg-[#b30d1c] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Printer className="h-4 w-4" />
@@ -691,15 +675,16 @@ export default function PhanCongCvPanel({
                   <button
                     type="button"
                     onClick={() => setRows(prev => [...prev, emptyRow(ngay, ca)])}
-                    className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-extrabold text-zinc-700 hover:bg-zinc-50"
+                    disabled={!isSelectionReady || isSaving}
+                    className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-extrabold text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
                   >
                     <Plus className="h-4 w-4" />
-                    Thêm dòng
+                    Thêm phân công
                   </button>
                   <button
                     type="button"
                     onClick={() => void saveRows()}
-                    disabled={isSaving || isLoadingDetail}
+                    disabled={isSaving || !isSelectionReady || filledCount === 0}
                     className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-extrabold text-emerald-800 hover:bg-emerald-100 disabled:opacity-60"
                   >
                     {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -712,12 +697,12 @@ export default function PhanCongCvPanel({
 
           <div className="space-y-2 p-4">
             {error ? (
-              <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+              <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
                 {error}
               </div>
             ) : null}
             {message ? (
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
+              <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
                 {message}
               </div>
             ) : null}
@@ -727,7 +712,8 @@ export default function PhanCongCvPanel({
                 <thead className="bg-[#e8f0ed] text-[10px] font-semibold tracking-wide text-zinc-700">
                   <tr>
                     <th className="w-12 border border-zinc-200 px-2 py-1.5">STT</th>
-                    <th className="min-w-[180px] border border-zinc-200 px-2 py-1.5 text-left">Công việc (task)</th>
+                    <th scope="col" className="w-28 border border-zinc-200 px-2 py-1.5 text-left">Giờ</th>
+                    <th scope="col" className="min-w-[180px] border border-zinc-200 px-2 py-1.5 text-left">Công việc</th>
                     <th className="min-w-[200px] border border-zinc-200 px-2 py-1.5 text-left">Nhân sự phụ trách</th>
                     <th className="border border-zinc-200 px-2 py-1.5 text-left">Thành phẩm</th>
                     <th className="border border-zinc-200 px-2 py-1.5 text-left">ĐM thành phẩm TT</th>
@@ -738,7 +724,7 @@ export default function PhanCongCvPanel({
                 <tbody>
                   {isLoadingDetail ? (
                     <tr>
-                      <td colSpan={canEdit ? 7 : 6} className="border border-zinc-200 px-3 py-8 text-center text-zinc-500">
+                      <td colSpan={canEdit ? 8 : 7} className="border border-zinc-200 px-3 py-8 text-center text-zinc-500">
                         <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
                         Đang tải...
                       </td>
@@ -751,13 +737,28 @@ export default function PhanCongCvPanel({
                         </td>
                         <td className="border border-zinc-200 p-0.5 align-middle">
                           {canEdit ? (
+                            <input
+                              type="time"
+                              value={row.gio}
+                              aria-label={`Giờ dòng ${index + 1}`}
+                              onChange={event => updateRow(row.key, { gio: event.target.value })}
+                              className={fieldClass}
+                              disabled={!isSelectionReady || isSaving}
+                            />
+                          ) : (
+                            <span className={`${cellClass} inline-flex items-center`}>{row.gio || '—'}</span>
+                          )}
+                        </td>
+                        <td className="border border-zinc-200 p-0.5 align-middle">
+                          {canEdit ? (
                             <SearchableSelect
                               value={row.congViec}
                               onChange={value => updateRow(row.key, { congViec: value })}
                               options={jobOptions}
-                              placeholder="Chọn hoặc thêm task"
-                              searchPlaceholder="Tìm / nhập task việc..."
+                              placeholder="Chọn hoặc nhập công việc"
+                              searchPlaceholder="Tìm công việc..."
                               inputClassName={fieldClass}
+                              disabled={!isSelectionReady || isSaving}
                               comboboxMode
                               allowCustomValue
                               isLoading={isLoadingLookups}
@@ -777,6 +778,7 @@ export default function PhanCongCvPanel({
                               placeholder="Chọn NV HCM"
                               searchPlaceholder="Tìm nhân sự HCM..."
                               inputClassName={fieldClass}
+                              disabled={!isSelectionReady || isSaving}
                               comboboxMode
                               allowCustomValue
                               isLoading={isLoadingLookups}
@@ -795,7 +797,7 @@ export default function PhanCongCvPanel({
                             value={row.thanhPham}
                             onChange={e => updateRow(row.key, { thanhPham: e.target.value })}
                             className={cellClass}
-                            disabled={!canEdit}
+                            disabled={!canEdit || !isSelectionReady || isSaving}
                             placeholder="Thành phẩm"
                           />
                         </td>
@@ -804,7 +806,7 @@ export default function PhanCongCvPanel({
                             value={row.dmThanhPhamTT}
                             onChange={e => updateRow(row.key, { dmThanhPhamTT: e.target.value })}
                             className={cellClass}
-                            disabled={!canEdit}
+                            disabled={!canEdit || !isSelectionReady || isSaving}
                             placeholder="Định mức TT"
                           />
                         </td>
@@ -813,7 +815,7 @@ export default function PhanCongCvPanel({
                             value={row.ghiChu}
                             onChange={e => updateRow(row.key, { ghiChu: e.target.value })}
                             className={cellClass}
-                            disabled={!canEdit}
+                            disabled={!canEdit || !isSelectionReady || isSaving}
                             placeholder="Ghi chú"
                           />
                         </td>
@@ -822,6 +824,7 @@ export default function PhanCongCvPanel({
                             {rows.length > 1 ? (
                               <button
                                 type="button"
+                                disabled={isSaving}
                                 onClick={() => setRows(prev => prev.filter(item => item.key !== row.key))}
                                 className="inline-flex h-8 w-8 items-center justify-center text-zinc-400 hover:text-rose-600"
                                 title="Xóa dòng"
@@ -838,7 +841,7 @@ export default function PhanCongCvPanel({
               </table>
             </div>
             <p className="text-[11px] font-semibold text-zinc-500">
-              {filledCount} dòng có dữ liệu · Lưu sẽ ghi đè toàn bộ phân công của Ngày + Ca đang chọn.
+              {filledCount} phân công · Giờ, nhân sự và công việc là bắt buộc.
             </p>
           </div>
         </section>

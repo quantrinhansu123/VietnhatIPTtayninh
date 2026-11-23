@@ -7619,6 +7619,26 @@ function warehouseTables(loaiPhieu: 'nhap' | 'xuat') {
   } as const;
 }
 
+/** Bỏ các dòng thuộc phiếu đã xóa mềm (da_xoa) — mã QR của phiếu đó được quét lại bình thường. */
+async function withoutSoftDeletedSlips<T extends { ma_phieu?: unknown }>(
+  headerTable: 'phieu_nhap' | 'phieu_xuat',
+  rows: T[]
+): Promise<T[]> {
+  const codes = [...new Set(rows.map(row => String(row.ma_phieu ?? '').trim()).filter(Boolean))];
+  if (!codes.length || !supabaseKho) return rows;
+  const dead = new Set<string>();
+  for (let offset = 0; offset < codes.length; offset += 100) {
+    const { data, error } = await supabaseKho
+      .from(headerTable)
+      .select('ma_phieu')
+      .eq('da_xoa', true)
+      .in('ma_phieu', codes.slice(offset, offset + 100));
+    if (error) throw new Error(error.message || 'Không kiểm tra được phiếu đã xóa.');
+    for (const row of data || []) dead.add(String(row.ma_phieu));
+  }
+  return dead.size ? rows.filter(row => !dead.has(String(row.ma_phieu ?? '').trim())) : rows;
+}
+
 /** Xóa mọi dòng của một phiếu. Lặp theo lô vì PostgREST chỉ xóa tối đa khoảng 1000 dòng mỗi lệnh. */
 async function deleteKhoLinesBySlip(lineTable: 'nhap_kho' | 'xuat_kho', slipCode: string) {
   if (!supabaseKho) throw new Error(`Chưa cấu hình DB kho (${SUPABASE_KHO_DB_LABEL}).`);
@@ -7840,7 +7860,7 @@ async function loadWarehouseMovementsFromKho(filter: WarehouseMovementFilter = {
   const types = filter.loaiPhieu ? [filter.loaiPhieu] : (['nhap', 'xuat'] as const);
   for (const loaiPhieu of types) {
     const { header: headerTable, line: lineTable } = warehouseTables(loaiPhieu);
-    let headerQuery: any = supabaseKho.from(headerTable).select(WAREHOUSE_HEADER_SELECT);
+    let headerQuery: any = supabaseKho.from(headerTable).select(WAREHOUSE_HEADER_SELECT).eq('da_xoa', false);
     if (filter.maPhieu) headerQuery = headerQuery.eq('ma_phieu', filter.maPhieu);
     if (filter.tenKho) headerQuery = headerQuery.eq('kho', filter.tenKho);
     if (filter.fromDate) headerQuery = headerQuery.gte('ngay', filter.fromDate);
@@ -13723,6 +13743,7 @@ export function createApp() {
         let query = supabaseKho
           .from(headerTable)
           .select(WAREHOUSE_HEADER_SELECT)
+          .eq('da_xoa', false)
           .order('ngay', { ascending: false })
           .order('ma_phieu', { ascending: false });
         if (slipCode) query = query.eq('ma_phieu', slipCode);
@@ -13883,6 +13904,7 @@ export function createApp() {
     let slipQuery = supabaseKho
       .from(table)
       .select('ma_phieu, ngay, nhan_su, kho, ca, may, ghi_chu, status, created_at')
+      .eq('da_xoa', false)
       .eq('kho', warehouse);
     if (status !== 'all') slipQuery = slipQuery.eq('status', status === 'da_chot' ? 'da_chot' : 'chua_chot');
     if (ngay) slipQuery = slipQuery.eq('ngay', ngay);
@@ -14085,22 +14107,37 @@ export function createApp() {
     const slipCode = String(req.params.slipCode || '').trim();
     if (!slipCode) return res.status(400).json({ error: 'Thiếu mã phiếu.' });
     const draftOnly = String(req.query.draft || '').trim().toLowerCase() === 'true';
+    const nguoiXoaId = String(req.query.nguoi_xoa_id || '').trim();
 
     try {
       let slipType: 'nhap' | 'xuat' | null = null;
+      let slipStatus = '';
       for (const type of ['nhap', 'xuat'] as const) {
         const table = type === 'nhap' ? 'phieu_nhap' : 'phieu_xuat';
-        const { data, error } = await supabaseKho.from(table).select('ma_phieu, status').eq('ma_phieu', slipCode).maybeSingle();
+        const { data, error } = await supabaseKho.from(table).select('ma_phieu, status, da_xoa').eq('ma_phieu', slipCode).maybeSingle();
         if (error) return res.status(500).json({ error: `Không tải được phiếu. ${error.message}` });
         if (data) {
           if (draftOnly && data.status !== 'chua_chot') return res.status(409).json({ error: 'Chỉ được xóa phiếu chưa chốt.' });
+          if (data.da_xoa) return res.status(404).json({ error: 'Phiếu đã bị xóa.' });
           slipType = type;
+          slipStatus = String(data.status || '');
         }
       }
       if (!slipType) return res.status(404).json({ error: 'Không tìm thấy phiếu cần xóa.' });
 
       const headerTable = slipType === 'nhap' ? 'phieu_nhap' : 'phieu_xuat';
       const lineTable = slipType === 'nhap' ? 'nhap_kho' : 'xuat_kho';
+
+      // Phiếu đã chốt: xóa mềm (giữ dòng + header để khôi phục/đối soát), phiếu chưa chốt vẫn xóa cứng.
+      if (slipStatus !== 'chua_chot') {
+        if (!nguoiXoaId) return res.status(400).json({ error: 'Thiếu nguoi_xoa_id để xóa phiếu đã chốt.' });
+        const { error: softError } = await supabaseKho
+          .from(headerTable)
+          .update({ da_xoa: true, nguoi_xoa_id: nguoiXoaId })
+          .eq('ma_phieu', slipCode);
+        if (softError) return res.status(500).json({ error: `Không thể xóa phiếu. ${softError.message}` });
+        return res.json({ success: true, softDeleted: true, lineTable });
+      }
       const lines = await deleteKhoLinesBySlip(lineTable, slipCode);
 
       if (!draftOnly) {
@@ -14167,7 +14204,7 @@ export function createApp() {
         .select('ma_sp_quet, ma_phieu')
         .in('ma_sp_quet', codes.slice(offset, offset + 100));
       if (error) return res.status(500).json({ error: error.message || 'Không thể kiểm tra mã QR trùng.' });
-      for (const row of data || []) {
+      for (const row of await withoutSoftDeletedSlips(slipType === 'nhap' ? 'phieu_nhap' : 'phieu_xuat', data || [])) {
         const code = String(row.ma_sp_quet ?? '').trim();
         if (!code) continue;
         matches.push({ ma_sp_quet: code, ma_phieu: String(row.ma_phieu ?? '').trim() });
@@ -14210,7 +14247,12 @@ export function createApp() {
       return res.status(500).json({ error: error.message || 'Không tra cứu được mã QR trong nhap_kho.' });
     }
 
-    const rows = Array.isArray(data) ? data : [];
+    let rows: Record<string, any>[] = [];
+    try {
+      rows = await withoutSoftDeletedSlips('phieu_nhap', Array.isArray(data) ? data : []);
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Không tra cứu được mã QR trong nhap_kho.' });
+    }
     return res.json({
       found: rows.length > 0,
       ma_sp_quet: code,
@@ -14350,6 +14392,7 @@ export function createApp() {
       const { data: slips, error } = await khoDb
         .from('phieu_xuat')
         .select('ma_phieu, ghi_chu')
+        .eq('da_xoa', false)
         .eq('status', 'da_chot')
         .like('ghi_chu', '%[LXH:%');
       if (error) return res.status(500).json({ error: error.message });
@@ -14475,7 +14518,7 @@ export function createApp() {
           ));
           for (const { data, error } of results) {
             if (error) throw new Error(error.message || 'Không thể kiểm tra mã QR đã lưu.');
-            for (const row of data || []) {
+            for (const row of await withoutSoftDeletedSlips(headerTable, data || [])) {
               const code = String(row.ma_sp_quet ?? '').trim();
               if (!code) continue;
               const previous = existing.get(code);
@@ -14523,14 +14566,14 @@ export function createApp() {
           const batch = pendingItems.slice(offset, offset + 100);
           const { data: exportedRows, error: exportedError } = await khoDb
             .from('xuat_kho')
-            .select('ma_sp_quet')
+            .select('ma_sp_quet, ma_phieu')
             .eq('loai', 'san_pham')
             .neq('ma_phieu', maPhieu)
             .in('ma_sp_quet', batch.map(item => item.fullCode));
           if (exportedError) {
             return res.status(500).json({ error: exportedError.message || 'Không kiểm tra được mã đã xuất kho.' });
           }
-          for (const row of exportedRows || []) {
+          for (const row of await withoutSoftDeletedSlips('phieu_xuat', exportedRows || [])) {
             const key = String(row.ma_sp_quet ?? '').trim().replace(/\s+/g, '').toUpperCase();
             if (key) exportedKeys.add(key);
           }
@@ -20927,7 +20970,7 @@ export function createApp() {
       const { header: headerTable, line: lineTable } = warehouseTables(loaiPhieu);
       const headers = new Map<string, { ngay: string; kho: string }>();
       for (let offset = 0; ; offset += pageSize) {
-        let query = supabaseKho.from(headerTable).select('ma_phieu, ngay, kho, treo').order('ma_phieu');
+        let query = supabaseKho.from(headerTable).select('ma_phieu, ngay, kho, treo').eq('da_xoa', false).order('ma_phieu');
         if (tenKho) query = query.eq('kho', tenKho);
         if (denNgay) query = query.lte('ngay', denNgay);
         const { data, error } = await query.range(offset, offset + pageSize - 1);
@@ -21223,7 +21266,7 @@ export function createApp() {
       const treo: Array<{ ma_phieu: string; loai: 'nhap' | 'xuat'; ngay: string; kho: string; so_ngay: number }> = [];
       if (supabaseKho) {
         for (const loaiPhieu of ['nhap', 'xuat'] as const) {
-          let query = supabaseKho.from(warehouseTables(loaiPhieu).header).select('ma_phieu, ngay, kho').eq('treo', true);
+          let query = supabaseKho.from(warehouseTables(loaiPhieu).header).select('ma_phieu, ngay, kho').eq('da_xoa', false).eq('treo', true);
           if (tenKho) query = query.eq('kho', tenKho);
           const { data, error } = await query.limit(500);
           if (error) continue;

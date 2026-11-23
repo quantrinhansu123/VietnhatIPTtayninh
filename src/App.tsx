@@ -1679,6 +1679,7 @@ export default function App() {
                 transition={{ duration: 0.15 }}
               >
                 <WarehouseHistoryPanel
+                  currentUser={authUser}
                   onBack={() => goBack('factory-kho')}
                   onOpenSlip={() => navigateToTab('warehouse-slip')}
                 />
@@ -1692,6 +1693,7 @@ export default function App() {
                 transition={{ duration: 0.15 }}
               >
                 <WarehouseHistoryPanel
+                  currentUser={authUser}
                   onBack={() => goBack('warehouse-history')}
                   onOpenSlip={() => navigateToTab('warehouse-slip')}
                   standaloneSlipCode={(() => {
@@ -1712,6 +1714,7 @@ export default function App() {
                 transition={{ duration: 0.15 }}
               >
                 <WarehouseHistoryPanel
+                  currentUser={authUser}
                   onBack={() => goBack('factory-kho')}
                   onOpenSlip={() => navigateToTab('warehouse-slip')}
                   initialWarehouseTab="hang_hong"

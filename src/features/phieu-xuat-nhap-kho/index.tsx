@@ -6217,8 +6217,10 @@ export function WarehouseHistoryPanel({
   initialFilters,
   initialWarehouseTab = 'nvl',
   initialSlipType = 'nhap',
-  standaloneSlipCode
+  standaloneSlipCode,
+  currentUser
 }: {
+  currentUser?: AuthUser | null;
   onBack: () => void;
   onOpenSlip: () => void;
   initialFilters?: {
@@ -7504,12 +7506,12 @@ export function WarehouseHistoryPanel({
       return;
     }
     if (!slipCode) return;
-    if (!window.confirm(`Xóa phiếu ${slipCode} và ${lineCount} dòng tương ứng trong nhap_kho/xuat_kho?`)) return;
+    if (!window.confirm(`Xóa phiếu ${slipCode} (${lineCount} dòng)? Phiếu đã chốt chỉ bị đánh dấu xóa, phiếu chưa chốt sẽ xóa hẳn.`)) return;
 
     setDeletingSlipCode(slipCode);
     setError('');
     try {
-      const res = await fetch(`/api/kho/phieu/${encodeURIComponent(slipCode)}`, {
+      const res = await fetch(`/api/kho/phieu/${encodeURIComponent(slipCode)}?nguoi_xoa_id=${encodeURIComponent(currentUser?.id ?? '')}`, {
         method: 'DELETE'
       });
       const data = await res.json().catch(() => ({}));
@@ -7540,7 +7542,7 @@ export function WarehouseHistoryPanel({
     setError('');
     try {
       for (const slipCode of selectedSlipCodes) {
-        const res = await fetch(`/api/kho/phieu/${encodeURIComponent(slipCode)}`, {
+        const res = await fetch(`/api/kho/phieu/${encodeURIComponent(slipCode)}?nguoi_xoa_id=${encodeURIComponent(currentUser?.id ?? '')}`, {
           method: 'DELETE'
         });
         const data = await res.json().catch(() => ({}));

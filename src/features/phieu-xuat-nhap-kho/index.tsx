@@ -6633,6 +6633,8 @@ export function WarehouseHistoryPanel({
   }, [selectedType]);
 
   const isFinishedGoodsHistory = warehouseTab === 'san_pham';
+  // Kho thành phẩm lỗi: không đối chiếu Cân AI, không gom theo lệnh xuất hàng.
+  const isDefectiveHistory = isDefectiveFinishedGoodsWarehouseName(selectedWarehouseName);
   const hasActiveFilters =
     Boolean(fromDate) ||
     Boolean(toDate) ||
@@ -6984,7 +6986,7 @@ export function WarehouseHistoryPanel({
     };
   }, [historyShippingOrders, historyExportedByOrder, fromDate, toDate, searchText]);
 
-  const showOutboundOrderDailySummary = isFinishedGoodsHistory && selectedType === 'xuat';
+  const showOutboundOrderDailySummary = isFinishedGoodsHistory && !isDefectiveHistory && selectedType === 'xuat';
 
   const selectableSlips = useMemo(
     () => slipGroups.filter(group => group.slipCode && group.rows.some(row => row.id)),
@@ -7744,8 +7746,8 @@ export function WarehouseHistoryPanel({
           </div>
           <div className="min-w-0">
             <p className="truncate text-xs font-bold text-zinc-800">
-              {warehouseKindLabel(warehouseTab)} · {warehouseSlipTypeLabel(selectedType)}
-              {selectedWarehouseName && selectedWarehouseName !== warehouseKindLabel(warehouseTab)
+              {isDefectiveHistory ? selectedWarehouseName : warehouseKindLabel(warehouseTab)} · {warehouseSlipTypeLabel(selectedType)}
+              {selectedWarehouseName && !isDefectiveHistory && selectedWarehouseName !== warehouseKindLabel(warehouseTab)
                 ? ` · ${selectedWarehouseName}`
                 : ''}
             </p>
@@ -7800,7 +7802,7 @@ export function WarehouseHistoryPanel({
         </div>
       </section>
 
-      {isFinishedGoodsHistory && !isLoading ? (
+      {isFinishedGoodsHistory && !isDefectiveHistory && !isLoading ? (
         <ReconciliationPanel
           mode={selectedType}
           movements={filteredMovements}
@@ -7850,7 +7852,7 @@ export function WarehouseHistoryPanel({
             <TableEmptyRow colSpan={historyColumnCount}>
               {hasActiveFilters || movements.length > 0
                 ? `Không có phiếu ${warehouseSlipTypeLabel(selectedType).toLowerCase()} khớp bộ lọc (ca / máy / ngày / tìm kiếm). Thử tab ${selectedType === 'xuat' ? 'Nhập kho' : 'Xuất kho'} hoặc bấm Xóa.`
-                : `Chưa có phiếu ${warehouseSlipTypeLabel(selectedType).toLowerCase()} tại ${warehouseKindLabel(warehouseTab)}.`}
+                : `Chưa có phiếu ${warehouseSlipTypeLabel(selectedType).toLowerCase()} tại ${isDefectiveHistory ? selectedWarehouseName : warehouseKindLabel(warehouseTab)}.`}
             </TableEmptyRow>
           </TableBody>
         </TableShell>

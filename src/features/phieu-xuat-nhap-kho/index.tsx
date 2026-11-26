@@ -567,6 +567,11 @@ export function isFinishedGoodsWarehouseName(value?: string | null) {
   );
 }
 
+/** Kho thành phẩm lỗi: nhập/xuất như kho thành phẩm nhưng xuất không cần Lệnh xuất hàng. */
+export function isDefectiveFinishedGoodsWarehouseName(value?: string | null) {
+  return normalizeWarehouseNameKey(value) === 'kho thanh pham loi';
+}
+
 /** Suy loại kho từ tên kho trong Quản lý kho. */
 export function inferWarehouseKindFromName(value?: string | null): WarehouseKind {
   if (isFinishedGoodsWarehouseName(value)) return 'san_pham';
@@ -2899,7 +2904,13 @@ export function WarehouseSlipPanel({
     slipType === 'xuat' &&
     !isXuatTreoMode &&
     warehouseKind === 'san_pham' &&
+    !isDefectiveFinishedGoodsWarehouseName(selectedWarehouseName) &&
     Boolean(selectedWarehouseName);
+
+  // Kho thành phẩm lỗi không theo lệnh xuất: bỏ lệnh đã chọn ở kho trước để không chặn quét/lưu.
+  useEffect(() => {
+    if (!showShippingOrderPicker && shippingOrderId) setShippingOrderId('');
+  }, [showShippingOrderPicker, shippingOrderId]);
 
   useEffect(() => {
     if (!showShippingOrderPicker) return;

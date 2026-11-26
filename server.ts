@@ -14665,12 +14665,24 @@ export function createApp() {
             const batch = serialItems.slice(offset, offset + 100);
             const { data: importedRows, error: importedError } = await khoDb
               .from('nhap_kho')
-              .select('ma_sp_quet')
+              .select('ma_sp_quet, ma_phieu')
               .in('ma_sp_quet', batch.map(item => item.fullCode));
             if (importedError) {
               return res.status(500).json({ error: importedError.message || 'Không kiểm tra được mã đã nhập kho.' });
             }
+            // Kho thành phẩm lỗi tách riêng: chỉ xuất mã đã nhập vào kho lỗi, kho thành phẩm thường không xuất mã kho lỗi.
+            const importSlipCodes = [...new Set((importedRows || []).map(row => String(row.ma_phieu ?? '')).filter(Boolean))];
+            const khoBySlip = new Map<string, string>();
+            if (importSlipCodes.length) {
+              const { data: slips, error: slipError } = await khoDb.from('phieu_nhap').select('ma_phieu, kho').in('ma_phieu', importSlipCodes);
+              if (slipError) return res.status(500).json({ error: slipError.message || 'Không kiểm tra được kho của phiếu nhập.' });
+              for (const slip of slips || []) khoBySlip.set(String(slip.ma_phieu), String(slip.kho ?? ''));
+            }
+            const isLoiKho = (name: string) =>
+              name.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ') === 'kho thanh pham loi';
+            const exportingFromLoi = isLoiKho(String(headerFields.kho ?? ''));
             for (const row of importedRows || []) {
+              if (isLoiKho(khoBySlip.get(String(row.ma_phieu ?? '')) ?? '') !== exportingFromLoi) continue;
               const key = String(row.ma_sp_quet ?? '').trim().replace(/\s+/g, '').toUpperCase();
               if (key) importedKeys.add(key);
             }

@@ -674,6 +674,11 @@ export default function MaterialConversionPanel({
       findProductsUsingMaterial(products, code).map(row => ({ ...row, materialCode: code }))
     );
   }, [draft.destinations, products]);
+  // Vật tư quy đổi (đích) cho chọn thêm Lõi thừa (LOI_THUA) ngoài mã ống.
+  const destinationMaterialCodes = useMemo(
+    () => materials.filter(item => /^(ong[-_\s.]|loi[-_\s.]?thua)/i.test(item.code.trim())).map(item => item.code),
+    [materials]
+  );
   const shiftOptions = useMemo(() => getProductionShiftOptions(shiftSettings), [shiftSettings]);
   const machineCodes = useMemo(() => machines.map(item => item.code), [machines]);
   const materialLabel = (code: string) => {
@@ -1258,7 +1263,7 @@ export default function MaterialConversionPanel({
           sourceLength={draft.chieu_dai_goc}
           sourceUnitWeight={draft.trong_luong_tren_cai_goc}
           materialByCode={materialByCode}
-          materialCodes={materialCodes}
+          materialCodes={destinationMaterialCodes}
           materialLabel={materialLabel}
           disabled={busy || materialsLoading || Boolean(materialsError)}
           canAdd={canCreate || canEdit}

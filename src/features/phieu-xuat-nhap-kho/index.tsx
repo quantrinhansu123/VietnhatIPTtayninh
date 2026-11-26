@@ -4809,10 +4809,10 @@ export function WarehouseSlipPanel({
             </div>
           </div>
 
-          <div className="grid gap-1.5 sm:grid-cols-2">
+          <div className="grid items-start gap-1.5 sm:grid-cols-2">
             <label className="block min-w-0 space-y-0.5">
-              <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
-                Tên kho *{warehouseName ? <span className="ml-1 font-semibold normal-case tracking-normal text-zinc-400">· {warehouseKindLabel(warehouseKind)}</span> : null}
+              <span className="flex min-h-[18px] items-center text-[10px] font-black uppercase tracking-wider text-zinc-500">
+                Tên kho *{warehouseName ? <span className="ml-1 font-semibold normal-case tracking-normal text-zinc-400">· {isDefectiveFinishedGoodsWarehouseName(warehouseName) ? 'Kho thành phẩm lỗi' : warehouseKindLabel(warehouseKind)}</span> : null}
               </span>
               <SearchableSelect
                 value={warehouseName}
@@ -4840,7 +4840,7 @@ export function WarehouseSlipPanel({
             {/* Xuất TP: bỏ «Chọn phiếu xuất chưa chốt» — chỉ giữ Lệnh xuất hàng + quét. Nhập TP vẫn chọn phiếu chưa chốt. */}
             {showProductExportTabs && slipType === 'nhap' && !editSlipCode && warehouseName ? (
               <div className="block min-w-0 space-y-0.5">
-                <div className="flex flex-wrap items-center justify-between gap-1">
+                <div className="flex min-h-[18px] items-center justify-between gap-1">
                   <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
                     Phiếu nhập chưa chốt
                   </span>

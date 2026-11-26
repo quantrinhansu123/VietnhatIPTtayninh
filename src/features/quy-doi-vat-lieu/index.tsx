@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowLeftRight, Loader2, Pencil, Plus, RefreshCw, Trash2, X } from 'lucide-react';
 import { useTabAccess } from '../../app/useTabAccess';
+import { showAppToast } from '../../lib/appToast';
 import { formatNumber } from '../../utils';
 import {
   FilterCombobox,
@@ -980,6 +981,15 @@ export default function MaterialConversionPanel({
     const input = parseMaterialConversionBatch(payload);
     if (!input) {
       setError('Nhập đủ Ngày · Ca · Máy, vật tư gốc và ít nhất một đích (số lượng > 0, không trùng mã).');
+      return;
+    }
+    const srcWeight = payload.khoi_luong_goc ?? 0;
+    const destWeight = payload.destinations.reduce((sum, item) => sum + (item.khoi_luong_quy_doi ?? 0), 0);
+    // Cho sai số làm tròn TL/cái: tối đa 0,5% khối lượng gốc (tối thiểu 0,01 kg).
+    if (Math.abs(srcWeight - destWeight) > Math.max(0.01, srcWeight * 0.005)) {
+      const msg = `Tổng TL vật tư quy đổi (${formatNumber(destWeight, 3)} kg) khác TL vật tư gốc (${formatNumber(srcWeight, 3)} kg). Vui lòng chỉnh lại trước khi lưu.`;
+      setError(msg);
+      showAppToast(msg, 'error');
       return;
     }
     setBusy(true);

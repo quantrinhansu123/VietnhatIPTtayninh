@@ -24534,6 +24534,27 @@ export function createApp() {
         return res.status(400).json({ error: parsed.error });
       }
 
+      // Chặn báo cáo thừa: Σ SL đã báo cáo (cùng ngày·ca·máy·mặt hàng) + SL mới không được vượt SL cân AI.
+      const rec = parsed.record as Record<string, any>;
+      if (rec.loai_vat_tu === 'Thành phẩm' && rec.so_luong_ai != null) {
+        let sumQuery = supabase
+          .from(SUPABASE_ACCEPTANCE_REPORTS_TABLE)
+          .select('so_luong')
+          .eq('ngay', rec.ngay)
+          .eq('ca', rec.ca)
+          .eq('mat_hang', rec.mat_hang)
+          .eq('loai_vat_tu', 'Thành phẩm');
+        sumQuery = rec.ma_may ? sumQuery.eq('ma_may', rec.ma_may) : sumQuery.eq('ten_may', rec.ten_may);
+        const { data: existing, error: sumError } = await sumQuery;
+        if (sumError) return res.status(500).json({ error: acceptanceReportWriteError(sumError) });
+        const reported = (existing || []).reduce((s: number, r: any) => s + (Number(r.so_luong) || 0), 0);
+        if (reported + rec.so_luong > rec.so_luong_ai + 1e-9) {
+          return res.status(409).json({
+            error: `Mã ${rec.mat_hang}: cân AI ${rec.so_luong_ai}, đã báo cáo ${reported}, nhập thêm ${rec.so_luong} sẽ vượt. Chỉ còn được nhập tối đa ${Math.max(0, rec.so_luong_ai - reported)}.`
+          });
+        }
+      }
+
       const { data, error } = await supabase
         .from(SUPABASE_ACCEPTANCE_REPORTS_TABLE)
         .insert(parsed.record)

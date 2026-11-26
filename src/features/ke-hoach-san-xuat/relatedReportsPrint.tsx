@@ -46,6 +46,7 @@ import {
   buildAcceptanceFilmKgByProductCode,
   buildAcceptanceProductNormByCode
 } from '../../components/AcceptanceReportPrintSheet';
+import { acceptanceMixedKgByProduct } from '../../utils/acceptanceMixedWeight';
 import {
   buildCanTuDongPrintData,
   CanTuDongPrintSheet,
@@ -1447,6 +1448,7 @@ export function ProductionPlanRelatedPrintContent({ data }: { data: ProductionPl
             slip={slip}
             filmKgByProductCode={data.acceptanceFilmKgByProductCode}
             productNormByCode={data.acceptanceProductNormByCode}
+            mixedKgByProductCode={acceptanceMixedKgByProduct(data.totalReport, slip)}
             shiftSettings={data.shiftOptions}
             performedBy={performedBy}
             machineCode={slip.ma_may}

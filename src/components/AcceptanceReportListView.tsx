@@ -4,6 +4,7 @@ import { ChevronLeft, ClipboardList, Loader2, Pencil, Plus, Printer, RefreshCw, 
 import { useTabAccess } from '../app/useTabAccess';
 import { vietNhatLogoUrl } from './layout/constants';
 import { waitForPrintImagesReady } from '../utils/printReady';
+import { loadAcceptanceMixedWeight } from '../utils/acceptanceMixedWeight';
 import {
   AcceptanceReportPrintBatch,
   buildAcceptancePrintSlips,
@@ -975,6 +976,7 @@ export default function AcceptanceReportListView({
   const [message, setMessage] = useState('');
   const [pendingPrint, setPendingPrint] = useState(false);
   const [activePrintSlips, setActivePrintSlips] = useState<ReturnType<typeof buildAcceptancePrintSlips>>([]);
+  const [mixedKgBySlipId, setMixedKgBySlipId] = useState<Map<string, Map<string, number>>>(new Map());
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isSyncingWeight, setIsSyncingWeight] = useState(false);
   const [productNameByCode, setProductNameByCode] = useState<Map<string, string>>(() => new Map());
@@ -1406,6 +1408,21 @@ export default function AcceptanceReportListView({
       setError('Chưa có báo cáo sản lượng để in.');
       return;
     }
+    const weights = new Map<string, Map<string, number>>();
+    try {
+      for (const slip of slips) {
+        if (!slip.thanhPhamLines.length) continue;
+        const byProduct = await loadAcceptanceMixedWeight(slip);
+        if (!byProduct) {
+          setError(`Chưa có bản Tính toán BB mục 3.1 cho ngày ${slip.ngay}, ca ${slip.ca}, máy ${slip.machineLabel}.`);
+          return;
+        }
+        weights.set(slip.id, byProduct);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không tải được trọng lượng nhập thành phẩm từ BB 3.1.');
+      return;
+    }
     const ids = reportsWithNames.filter(report => !report.da_in).map(report => report.id);
     if (ids.length > 0) {
       if (!window.confirm('Phiếu sau khi in cần xác nhận riêng nếu muốn sửa và phải in lại sau khi lưu. Bạn có chắc chắn muốn in?')) {
@@ -1419,6 +1436,7 @@ export default function AcceptanceReportListView({
       }).catch(() => {});
     }
     setError('');
+    setMixedKgBySlipId(weights);
     setActivePrintSlips(slips);
     setPendingPrint(true);
   };
@@ -2119,6 +2137,7 @@ export default function AcceptanceReportListView({
             slips={activePrintSlips}
             filmKgByProductCode={filmKgByProductCode}
             productNormByCode={productNormByCode}
+            mixedKgBySlipId={mixedKgBySlipId}
             shiftSettings={shiftSettings}
           />,
           document.body

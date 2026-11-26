@@ -38,6 +38,7 @@ import {
   buildAcceptancePrintSlips
 } from './AcceptanceReportPrintSheet';
 import ControlBoardBbMachineReportPrintBatch from './ControlBoardBbMachineReportPrintSheet';
+import { loadAcceptanceMixedWeight } from '../utils/acceptanceMixedWeight';
 import {
   disableLandscapePrintPage,
   disablePortraitPrintPage,
@@ -228,6 +229,7 @@ export default function ReportListsHubModal({
   const [printData, setPrintData] = useState<ProductionPlanRelatedReports | null>(null);
   const [sanLuongShiftLead, setSanLuongShiftLead] = useState('');
   const [sanLuongPrintData, setSanLuongPrintData] = useState<SanLuongNkSxPrintData | null>(null);
+  const [sanLuongMixedKg, setSanLuongMixedKg] = useState<Map<string, number> | null>(null);
   const [isPreparingPrint, setIsPreparingPrint] = useState(false);
   const [printError, setPrintError] = useState('');
   const selectedPrintKind =
@@ -373,6 +375,13 @@ export default function ReportListsHubModal({
           setTonData(null);
           return;
         }
+        const slip = buildAcceptancePrintSlips(data.acceptance)[0];
+        const mixedKg = slip ? await loadAcceptanceMixedWeight(slip) : null;
+        if (!mixedKg) {
+          setPrintError('Chưa có bản Tính toán BB mục 3.1 cho ngày · ca · máy đã chọn.');
+          return;
+        }
+        setSanLuongMixedKg(mixedKg);
         setTonData(null);
         setPrintData(null);
         setSanLuongPrintData(data);
@@ -405,6 +414,15 @@ export default function ReportListsHubModal({
         setSanLuongPrintData(null);
         setTonData(null);
         return;
+      }
+      const slip = buildAcceptancePrintSlips(data.acceptance)[0];
+      if (slip?.thanhPhamLines.length) {
+        const mixedKg = await loadAcceptanceMixedWeight(slip);
+        if (!mixedKg) {
+          setPrintError('Chưa có bản Tính toán BB mục 3.1 cho ngày · ca · máy đã chọn.');
+          return;
+        }
+        setSanLuongMixedKg(mixedKg);
       }
       setTonData(null);
       setSanLuongPrintData(null);
@@ -690,6 +708,7 @@ export default function ReportListsHubModal({
               slips={acceptancePrintSlips}
               filmKgByProductCode={sanLuongFilmKg}
               productNormByCode={sanLuongProductNorm}
+              mixedKgByProductCode={sanLuongMixedKg}
               shiftSettings={sanLuongShiftSettings}
               performedBy={acceptancePerformedBy}
               machineCode={selectedPrintMachine?.code || printMachineCode}
@@ -739,6 +758,7 @@ export default function ReportListsHubModal({
                 slips={acceptancePrintSlips}
                 filmKgByProductCode={sanLuongFilmKg}
                 productNormByCode={sanLuongProductNorm}
+                mixedKgByProductCode={sanLuongMixedKg}
                 shiftSettings={sanLuongShiftSettings}
                 performedBy={acceptancePerformedBy}
                 machineCode={selectedPrintMachine?.code || printMachineCode}

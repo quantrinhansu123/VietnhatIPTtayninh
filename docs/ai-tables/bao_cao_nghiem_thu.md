@@ -8,7 +8,9 @@
 **Components (đã tách):**
 - `AcceptanceReportForm.tsx`
 - `AcceptanceReportListView.tsx`
-- `AcceptanceReportPrintSheet.tsx` — nút **In** dùng mẫu giấy **NHẬT KÝ SẢN XUẤT KIÊM PHIẾU GIAO** (1 phiếu / ngày·ca·máy); cột **(4)** = **tổng** trọng lượng SP theo mã trên báo cáo cân (`trong_luong` đã gom theo mã SP; fallback SL × `tong_trong_luong`); cột **(5)** ĐM nhựa = `san_pham.trong_luong_nhua`; cột **(6)** = số lượng (3) × định mức nhựa (5); panel II: ĐM TP SX / nhựa thực dùng / hao hụt
+- `AcceptanceReportPrintSheet.tsx` — nút **In** dùng mẫu giấy **NHẬT KÝ SẢN XUẤT KIÊM PHIẾU GIAO** (1 phiếu / ngày·ca·máy); TL tổng cuộn thực tế theo mã lấy `trong_luong` đã gom trên báo cáo cân (fallback SL × `tong_trong_luong`); TL vật tư trộn theo BB 3.1 như bên dưới; vật tư phụ = SL × (TL cuộn định mức − ĐM nhựa). Panel II: ĐM TP SX / nhựa thực dùng / hao hụt.
+
+**Cột “Trọng lượng vật tư trộn thực tế” trên phiếu in:** dùng tổng cột **“Trọng lượng vật tư nhập thành phẩm”** của BB mục 3.1 (`thucDungGroups[].lines[].klThucTeKg`, chỉ NVL trộn) cùng ngày·ca·máy. Phân bổ từng SP theo tỷ trọng `sanLuongGroups[].productGroups[].weightKg` trong cùng lệnh SX; dòng cuối nhận chênh lệch làm tròn để tổng khớp BB. Không lấy `SL × trong_luong_nhua`; chưa có bản Tính toán BB thì báo thiếu nguồn trước khi in.
 
 Modal quét máy/QR hiển thị **Tổng SL** màu đỏ ở góc phải dòng trạng thái đầu đọc, lấy từ số mặt hàng đã quét/điền trong danh sách hiện tại; đóng/mở lại modal vẫn giữ đúng tổng, mã trùng/lỗi không làm tăng.
 

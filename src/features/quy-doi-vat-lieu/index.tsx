@@ -15,10 +15,10 @@ import {
   TablePagination
 } from '../../components/shared/table';
 import { getProductionShiftOptions, normalizeShiftSettings, type ShiftSetting } from '../../utils/shiftSettings';
+import { AddDestDialog } from './AddDestDialog';
 import { SubstituteDialog } from './SubstituteDialog';
 import {
   buildDestHintsFromProducts,
-  findProductsUsingMaterial,
   type ProductHintRow
 } from './productHints';
 import { parseProductNplItems } from '../san-pham/types';
@@ -395,7 +395,8 @@ function DestinationMaterialTable({
   onQuantityChange,
   onGhiChuChange,
   onNguonToiChange,
-  onSubstitute
+  onSubstitute,
+  onAddNew
 }: {
   selectLabel: string;
   destinations: DestinationDraft[];
@@ -416,6 +417,8 @@ function DestinationMaterialTable({
   onGhiChuChange: (key: string, value: string) => void;
   onNguonToiChange: (key: string, value: string) => void;
   onSubstitute?: (code: string) => void;
+  /** Mở modal tạo ống mới từ cuối dropdown mã. */
+  onAddNew?: () => void;
 }) {
   const srcLen = parseDraftQuantity(sourceLength);
   const srcWeight = parseDraftQuantity(sourceUnitWeight);
@@ -491,6 +494,11 @@ function DestinationMaterialTable({
                         buttonClassName="!h-9 w-full justify-between !rounded-md [&>span]:min-w-0 [&>span]:truncate"
                         dropdownWidth="w-max max-w-[min(36rem,calc(100vw-1rem))]"
                         onChange={value => { if (!disabled) onCodeChange(destination.key, value); }}
+                        footerAction={
+                          onAddNew && !disabled
+                            ? { label: '+ Thêm mới (ống · SP)', onClick: onAddNew }
+                            : undefined
+                        }
                       />
                     </fieldset>
                     {missing && (
@@ -641,13 +649,13 @@ export default function MaterialConversionPanel({
   const [editingIds, setEditingIds] = useState<string[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [substituteCode, setSubstituteCode] = useState('');
+  const [showAddDest, setShowAddDest] = useState(false);
   const [draft, setDraft] = useState<FormDraft>(() => draftFromFilters(filters));
   const [materials, setMaterials] = useState<ConversionMaterialOption[]>([]);
   const [materialsLoading, setMaterialsLoading] = useState(true);
   const [materialsError, setMaterialsError] = useState('');
   const [materialsRevision, setMaterialsRevision] = useState(0);
   const [products, setProducts] = useState<ProductHintRow[]>([]);
-  const [productsLoading, setProductsLoading] = useState(false);
   const [shiftSettings, setShiftSettings] = useState<ShiftSetting[]>([]);
   const [machines, setMachines] = useState<MachineOption[]>([]);
   const [optionsLoading, setOptionsLoading] = useState(true);
@@ -669,12 +677,6 @@ export default function MaterialConversionPanel({
       }),
     [products, draft.vat_tu_goc, sourceLengthForHints, materialByCode]
   );
-  const selectedDestSpLinks = useMemo(() => {
-    const codes = draft.destinations.map(item => item.vat_tu_quy_doi).filter(Boolean);
-    return codes.flatMap(code =>
-      findProductsUsingMaterial(products, code).map(row => ({ ...row, materialCode: code }))
-    );
-  }, [draft.destinations, products]);
   // Vật tư quy đổi (đích) cho chọn thêm Lõi thừa (LOI_THUA) ngoài mã ống.
   const destinationMaterialCodes = useMemo(
     () => materials.filter(item => /^(ong[-_\s.]|loi[-_\s.]?thua)/i.test(item.code.trim())).map(item => item.code),
@@ -719,7 +721,6 @@ export default function MaterialConversionPanel({
   useEffect(() => {
     if (!showForm) return;
     const controller = new AbortController();
-    setProductsLoading(true);
     void (async () => {
       try {
         const res = await fetch('/api/san-pham?format=table', { signal: controller.signal });
@@ -737,8 +738,6 @@ export default function MaterialConversionPanel({
         if (!controller.signal.aborted) setProducts(list);
       } catch {
         if (!controller.signal.aborted) setProducts([]);
-      } finally {
-        if (!controller.signal.aborted) setProductsLoading(false);
       }
     })();
     return () => controller.abort();
@@ -853,16 +852,16 @@ export default function MaterialConversionPanel({
     }));
   };
 
-  const applyDestHint = (code: string, suggestedDinhMuc: number | null) => {
+  const applyDestinationRow = (code: string, dinhMucRaw: string, chieuDaiRaw?: string) => {
     const specs = materialSpecs(materialByCode.get(code));
     setDraft(prev => {
       const emptyIndex = prev.destinations.findIndex(item => !item.vat_tu_quy_doi);
       const already = prev.destinations.some(item => item.vat_tu_quy_doi === code);
       if (already) return prev;
-      const dinhMuc = suggestedDinhMuc != null ? formatDraftNumber(suggestedDinhMuc) : '';
+      const dinhMuc = dinhMucRaw;
       const nextDest = {
         vat_tu_quy_doi: code,
-        chieu_dai_quy_doi: formatDraftNumber(specs.unitLength),
+        chieu_dai_quy_doi: chieuDaiRaw?.trim() || formatDraftNumber(specs.unitLength),
         dinh_muc: dinhMuc,
         so_luong_quy_doi: recomputeDestQty(prev.so_luong_goc, dinhMuc, '')
       };
@@ -1191,81 +1190,6 @@ export default function MaterialConversionPanel({
           onGhiChuChange={value => setDraft(prev => ({ ...prev, ghi_chu_goc: value }))}
           onNguonLayChange={value => setDraft(prev => ({ ...prev, nguon_lay: value }))}
         />
-        {draft.vat_tu_goc ? (
-          <div className="rounded-lg border border-sky-200 bg-sky-50/80 px-3 py-2.5 text-xs text-sky-950">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="font-bold uppercase tracking-wide text-sky-800">
-                Quy đổi theo thành phần SP
-              </p>
-              {productsLoading ? (
-                <span className="inline-flex items-center gap-1 text-[11px] text-sky-700">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Đang tải SP…
-                </span>
-              ) : null}
-            </div>
-            {!productsLoading && destHints.length === 0 ? (
-              <p className="mt-1 text-[11px] text-sky-800/80">
-                Chưa có mã ống ngắn hơn {draft.vat_tu_goc} trong thành phần / vật tư thay thế của SP nào.
-                Chọn mã đích bên dưới, hoặc gắn bằng «+ Thành phần SP / thay thế».
-              </p>
-            ) : null}
-            {destHints.length > 0 ? (
-              <ul className="mt-2 space-y-1.5">
-                {destHints.slice(0, 12).map(hint => {
-                  const spLabel = hint.products
-                    .slice(0, 4)
-                    .map(p => `${p.code}${p.name ? ` · ${p.name}` : ''}`)
-                    .join('; ');
-                  const more = hint.products.length > 4 ? ` (+${hint.products.length - 4})` : '';
-                  const already = draft.destinations.some(item => item.vat_tu_quy_doi === hint.code);
-                  return (
-                    <li
-                      key={hint.code}
-                      className="flex flex-wrap items-start justify-between gap-2 rounded-md border border-sky-100 bg-white/80 px-2 py-1.5"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="font-semibold text-slate-800">
-                          {hint.code}
-                          {hint.lengthCm != null ? (
-                            <span className="ml-1 font-mono font-normal text-slate-500">
-                              · {formatNumber(hint.lengthCm, 4)} cm
-                            </span>
-                          ) : null}
-                          {hint.suggestedDinhMuc != null ? (
-                            <span className="ml-1 font-mono font-normal text-emerald-700">
-                              · ĐM ≈ {hint.suggestedDinhMuc}
-                            </span>
-                          ) : null}
-                        </p>
-                        <p className="mt-0.5 text-[11px] leading-snug text-slate-600" title={spLabel + more}>
-                          SP: {spLabel || '—'}
-                          {more}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        disabled={busy || materialsLoading || already}
-                        onClick={() => applyDestHint(hint.code, hint.suggestedDinhMuc)}
-                        className="shrink-0 rounded-md border border-sky-300 bg-white px-2 py-1 text-[11px] font-bold text-sky-800 disabled:opacity-50"
-                      >
-                        {already ? 'Đã thêm' : 'Thêm đích'}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : null}
-            {selectedDestSpLinks.length > 0 ? (
-              <p className="mt-2 text-[11px] text-slate-700">
-                <span className="font-bold">Đích đã chọn dùng ở SP:</span>{' '}
-                {[...new Map(selectedDestSpLinks.map(row => [`${row.materialCode}|${row.code}`, row])).values()]
-                  .slice(0, 8)
-                  .map(row => `${row.materialCode} → ${row.code}`)
-                  .join(' · ')}
-              </p>
-            ) : null}
-          </div>
-        ) : null}
         <DestinationMaterialTable
           selectLabel={materialsLoading ? 'Đang tải Kho NVL…' : 'Chọn vật tư quy đổi'}
           destinations={draft.destinations}
@@ -1277,7 +1201,7 @@ export default function MaterialConversionPanel({
           materialLabel={materialLabel}
           disabled={busy || materialsLoading || Boolean(materialsError)}
           canAdd={canCreate || canEdit}
-          onAdd={() => setDraft(prev => ({ ...prev, destinations: [...prev.destinations, newDestinationDraft()] }))}
+          onAdd={() => setShowAddDest(true)}
           onRemove={key => setDraft(prev => ({
             ...prev,
             destinations: prev.destinations.length <= 1
@@ -1303,7 +1227,46 @@ export default function MaterialConversionPanel({
             destinations: prev.destinations.map(item => item.key === key ? { ...item, nguon_toi: value } : item)
           }))}
           onSubstitute={setSubstituteCode}
+          onAddNew={() => setShowAddDest(true)}
         />
+        {showAddDest && (
+          <AddDestDialog
+            materials={materials}
+            materialsLoading={materialsLoading}
+            sourceCode={draft.vat_tu_goc || undefined}
+            sourceLengthCm={sourceLengthForHints}
+            suggestedDinhMucFor={code => {
+              const hint = destHints.find(item => item.code === code);
+              return hint?.suggestedDinhMuc ?? null;
+            }}
+            onClose={() => setShowAddDest(false)}
+            onAdded={result => {
+              applyDestinationRow(result.code, result.dinhMuc, result.chieuDai);
+              setShowAddDest(false);
+              if (result.createdInKho) setMaterialsRevision(n => n + 1);
+              // Tải lại SP để khối gợi ý cập nhật thành phần vừa thêm.
+              void (async () => {
+                try {
+                  const res = await fetch('/api/san-pham?format=table');
+                  const data = await res.json();
+                  if (!res.ok || data.error) return;
+                  const list: ProductHintRow[] = (Array.isArray(data.products) ? data.products : [])
+                    .filter((row: { id?: unknown }) => row && !String(row.id ?? '').startsWith('nvl-'))
+                    .map((row: { id?: unknown; ma_sp?: unknown; ten_sp?: unknown; npl_phan_tram?: unknown }) => ({
+                      id: String(row.id ?? ''),
+                      code: String(row.ma_sp ?? '').trim(),
+                      name: String(row.ten_sp ?? '').trim(),
+                      items: parseProductNplItems(row.npl_phan_tram)
+                    }))
+                    .filter((row: ProductHintRow) => row.code);
+                  setProducts(list);
+                } catch {
+                  // Giữ danh sách SP hiện tại nếu tải lại thất bại.
+                }
+              })();
+            }}
+          />
+        )}
         {substituteCode && (
           <SubstituteDialog
             materialCode={substituteCode}

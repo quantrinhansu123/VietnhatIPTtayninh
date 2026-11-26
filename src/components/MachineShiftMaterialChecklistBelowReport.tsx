@@ -15,6 +15,7 @@ import {
   enableLandscapePrintPage,
   waitForPrintImagesReady
 } from '../utils/printReady';
+import { loadAcceptanceMixedWeight } from '../utils/acceptanceMixedWeight';
 
 type Props = {
   dateFrom?: string;
@@ -51,6 +52,7 @@ export default function MachineShiftMaterialChecklistBelowReport({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [printing, setPrinting] = useState(false);
+  const [mixedKgByProductCode, setMixedKgByProductCode] = useState<Map<string, number> | null>(null);
 
   const loadData = async () => {
     if (!canLoad) {
@@ -64,6 +66,12 @@ export default function MachineShiftMaterialChecklistBelowReport({
         code: machine,
         name: machineLabel
       });
+      const slip = buildAcceptancePrintSlips(next.acceptance || [])[0];
+      const mixedKg = slip?.thanhPhamLines.length ? await loadAcceptanceMixedWeight(slip) : null;
+      if (slip?.thanhPhamLines.length && !mixedKg) {
+        throw new Error('Chưa có bản Tính toán BB mục 3.1 cho ngày · ca · máy đã chọn.');
+      }
+      setMixedKgByProductCode(mixedKg);
       setData(next);
       return next;
     } catch (err) {
@@ -78,6 +86,7 @@ export default function MachineShiftMaterialChecklistBelowReport({
 
   useEffect(() => {
     setData(null);
+    setMixedKgByProductCode(null);
     setError('');
     setLoading(false);
     if (!canLoad) {
@@ -93,8 +102,16 @@ export default function MachineShiftMaterialChecklistBelowReport({
       code: machine,
       name: machineLabel
     })
-      .then(next => {
-        if (!cancelled) setData(next);
+      .then(async next => {
+        const slip = buildAcceptancePrintSlips(next.acceptance || [])[0];
+        const mixedKg = slip?.thanhPhamLines.length ? await loadAcceptanceMixedWeight(slip) : null;
+        if (slip?.thanhPhamLines.length && !mixedKg) {
+          throw new Error('Chưa có bản Tính toán BB mục 3.1 cho ngày · ca · máy đã chọn.');
+        }
+        if (!cancelled) {
+          setMixedKgByProductCode(mixedKg);
+          setData(next);
+        }
       })
       .catch(err => {
         if (!cancelled) {
@@ -185,6 +202,7 @@ export default function MachineShiftMaterialChecklistBelowReport({
               slips={acceptanceSlips}
               filmKgByProductCode={data.acceptanceFilmKgByProductCode}
               productNormByCode={data.acceptanceProductNormByCode}
+              mixedKgByProductCode={mixedKgByProductCode}
               shiftSettings={data.shiftOptions}
               performedBy={performedBy}
               machineCode={machine}

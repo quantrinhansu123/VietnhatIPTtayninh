@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Search } from 'lucide-react';
 
@@ -22,7 +22,8 @@ export function FilterCombobox({
   dropdownWidth = 'w-max min-w-[12rem] max-w-[min(24rem,calc(100vw-1rem))]',
   matchButtonWidth = false,
   className = '',
-  buttonClassName = ''
+  buttonClassName = '',
+  footerAction
 }: {
   label: string;
   options: string[];
@@ -39,6 +40,8 @@ export function FilterCombobox({
   matchButtonWidth?: boolean;
   className?: string;
   buttonClassName?: string;
+  /** Nút/action cố định cuối menu (vd Thêm mới) — đóng menu trước khi gọi. */
+  footerAction?: { label: ReactNode; onClick: () => void };
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -203,6 +206,20 @@ export function FilterCombobox({
                   </div>
                 ) : null}
               </div>
+              {footerAction ? (
+                <div className="mt-2 border-t border-zinc-100 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpen(false);
+                      footerAction.onClick();
+                    }}
+                    className="block w-full rounded-lg bg-emerald-50 px-2.5 py-2 text-left text-sm font-extrabold text-emerald-800 transition hover:bg-emerald-100"
+                  >
+                    {footerAction.label}
+                  </button>
+                </div>
+              ) : null}
             </div>,
             document.body
           )

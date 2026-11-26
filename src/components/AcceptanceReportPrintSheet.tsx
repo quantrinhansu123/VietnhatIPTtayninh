@@ -312,21 +312,10 @@ function resolveRollWeightKg(
   return null;
 }
 
-/** (5) Định mức nhựa / cuộn — chỉ lấy từ danh mục SP (`trong_luong_nhua`), không suy từ (4). */
+/** Định mức nhựa / cuộn — dùng tính vật tư phụ, không dùng cho cột vật tư trộn thực tế. */
 function resolvePlasticNormKg(norm: AcceptanceProductNorm | null): number | null {
   if (norm?.plasticWeightKg != null && norm.plasticWeightKg > 0) return norm.plasticWeightKg;
   return null;
-}
-
-/** (6) = (3) × (5): số lượng cuộn × định mức nhựa / cuộn. */
-function resolveTotalPlasticNormKg(
-  soLuong: number | null | undefined,
-  plasticNormKg: number | null
-): number | null {
-  const qty = Number(soLuong);
-  if (!Number.isFinite(qty) || !(qty > 0)) return null;
-  if (plasticNormKg == null || !(plasticNormKg > 0) || !Number.isFinite(plasticNormKg)) return null;
-  return Math.round(qty * plasticNormKg * 100) / 100;
 }
 
 export function resolveAcceptanceLineFilmKg(
@@ -530,6 +519,7 @@ export function AcceptanceReportPrintSheet({
   slip,
   filmKgByProductCode,
   productNormByCode,
+  mixedKgByProductCode,
   shiftSettings,
   performedBy = '',
   machineCode,
@@ -539,6 +529,8 @@ export function AcceptanceReportPrintSheet({
   slip: AcceptancePrintSlip;
   filmKgByProductCode?: Map<string, number>;
   productNormByCode?: Map<string, AcceptanceProductNorm>;
+  /** Cột Nhập thành phẩm 3.1 (BB), phân bổ theo TL của từng SP. */
+  mixedKgByProductCode?: Map<string, number> | null;
   shiftSettings?: Array<{
     code?: string;
     name?: string;
@@ -576,7 +568,7 @@ export function AcceptanceReportPrintSheet({
     soLuong: number | null;
     rollWeightKg: number | null;
     plasticNormKg: number | null;
-    totalNormKg: number | null;
+    mixedKg: number | null;
     actualNhuaKg: number | null;
     /** Trọng lượng tổng cuộn theo định mức = SL × TL tiêu chuẩn / cuộn. */
     dmRollKg: number | null;
@@ -599,7 +591,7 @@ export function AcceptanceReportPrintSheet({
         soLuong: null,
         rollWeightKg: null,
         plasticNormKg: null,
-        totalNormKg: null,
+        mixedKg: null,
         actualNhuaKg: null,
         dmRollKg: null,
         vtPhuKg: null,
@@ -610,10 +602,14 @@ export function AcceptanceReportPrintSheet({
     }
     const norm = lookupAcceptanceProductNorm(line.mat_hang, productNormByCode);
     const rollWeightKg = resolveRollWeightKg(line, norm);
-    // (3) số lượng · (5) ĐM nhựa · (6) = (3)×(5) — không dùng TL CUỘN BAO GỒM CẢ TÚI, LÕI (4).
+    // Cột vật tư trộn lấy từ Nhập thành phẩm 3.1 đã phân bổ theo TL SP, không dùng SL × ĐM.
     const soLuong = line.so_luong;
     const plasticNormKg = resolvePlasticNormKg(norm);
-    const totalNormKg = resolveTotalPlasticNormKg(soLuong, plasticNormKg);
+    const productKeys = [line.mat_hang, norm?.code, norm?.amisCode]
+      .map(value => normalizeProductCodeKey(value || ''));
+    const mixedKg = productKeys
+      .map(key => mixedKgByProductCode?.get(key))
+      .find(value => value != null) ?? null;
     const filmKg = resolveAcceptanceLineFilmKg(line.mat_hang, line.so_luong, filmKgByProductCode);
     const actualNhuaKg = resolveAcceptanceLineNhuaKg(line.trong_luong, filmKg);
     const dmRollKg =
@@ -639,7 +635,7 @@ export function AcceptanceReportPrintSheet({
       soLuong,
       rollWeightKg,
       plasticNormKg,
-      totalNormKg,
+      mixedKg,
       actualNhuaKg,
       dmRollKg,
       vtPhuKg,
@@ -649,8 +645,8 @@ export function AcceptanceReportPrintSheet({
   }
 
   const totalQty = lines.reduce((sum, line) => sum + (line.so_luong ?? 0), 0);
-  const totalNormKg = computedRows.reduce(
-    (sum, row) => sum + (row.totalNormKg != null && row.totalNormKg > 0 ? row.totalNormKg : 0),
+  const totalMixedKg = computedRows.reduce(
+    (sum, row) => sum + (row.mixedKg != null && row.mixedKg > 0 ? row.mixedKg : 0),
     0
   );
   const sumRows = (pick: (row: ComputedRow) => number | null) =>
@@ -758,7 +754,7 @@ export function AcceptanceReportPrintSheet({
                     <td className="right">{formatQtyPlain(row.soLuong)}</td>
                     <td className="right">{formatKgPlain(row.dmRollKg)}</td>
                     <td className="right">{formatKgPlain(row.rollWeightKg)}</td>
-                    <td className="right">{formatKgPlain(row.totalNormKg)}</td>
+                    <td className="right">{formatKgPlain(row.mixedKg)}</td>
                     <td className="right">{formatKgPlain(row.vtPhuKg)}</td>
                     <td className="right">{formatKgPlain(row.diffKg)}</td>
                     <td className="right">{row.diffPct != null ? `${row.diffPct.toFixed(2)}%` : ''}</td>
@@ -771,7 +767,7 @@ export function AcceptanceReportPrintSheet({
                   <td className="right strong">{formatQtyPlain(totalQty || null)}</td>
                   <td className="right strong">{formatKgPlain(totalDmRollKg > 0 ? totalDmRollKg : null)}</td>
                   <td className="right strong">{formatKgPlain(totalRollKg > 0 ? totalRollKg : null)}</td>
-                  <td className="right strong">{formatKgPlain(totalNormKg > 0 ? totalNormKg : null)}</td>
+                  <td className="right strong">{formatKgPlain(totalMixedKg > 0 ? totalMixedKg : null)}</td>
                   <td className="right strong">{formatKgPlain(totalVtPhuKg > 0 ? totalVtPhuKg : null)}</td>
                   <td className="right strong">{totalDmRollKg > 0 ? formatKgPlain(totalDiffKg) : ''}</td>
                   <td className="right strong">{totalDiffPct != null ? `${totalDiffPct.toFixed(2)}%` : ''}</td>
@@ -826,6 +822,8 @@ export function AcceptanceReportPrintBatch({
   slips,
   filmKgByProductCode,
   productNormByCode,
+  mixedKgByProductCode,
+  mixedKgBySlipId,
   shiftSettings,
   performedBy = '',
   machineCode,
@@ -835,6 +833,8 @@ export function AcceptanceReportPrintBatch({
   slips: AcceptancePrintSlip[];
   filmKgByProductCode?: Map<string, number>;
   productNormByCode?: Map<string, AcceptanceProductNorm>;
+  mixedKgByProductCode?: Map<string, number> | null;
+  mixedKgBySlipId?: Map<string, Map<string, number>>;
   shiftSettings?: Array<{
     code?: string;
     name?: string;
@@ -861,6 +861,7 @@ export function AcceptanceReportPrintBatch({
             slip={slip}
             filmKgByProductCode={filmKgByProductCode}
             productNormByCode={productNormByCode}
+            mixedKgByProductCode={mixedKgBySlipId?.get(slip.id) ?? mixedKgByProductCode}
             shiftSettings={shiftSettings}
             performedBy={performedBy}
             machineCode={machineCode}

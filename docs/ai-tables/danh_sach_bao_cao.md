@@ -31,6 +31,8 @@ Tab **Quy đổi vật liệu** (`material-conversion`) nhúng `src/features/quy
 
 Tab **Báo cáo** (`bao-cao-lech`) nhúng `src/features/bao-cao-lech/index.tsx`: lấy toàn bộ cột **lệch** (`chenhLechKg`) từ snapshot `bb_bao_cao_tinh_toan`, có ô **ghi chú bất thường** (API `/api/bao-cao-lech-ghi-chu`). Xem [bao_cao_lech_ghi_chu.md](./bao_cao_lech_ghi_chu.md).
 
+Tab **Báo cáo CP** (`bao-cao-cp`) nhúng `src/features/bao-cao-cp/index.tsx`: hai bảng **Lỗ hàng lỗi hỏng** và **Lỗ vận hành** từ `danhGiaGroups.summaryRows` (đơn giá × kg). Xem [bao_cao_cp.md](./bao_cao_cp.md).
+
 Báo cáo tồn · Phiếu nhận NVL · Trộn NVL · Danh sách cân · Hàng hỏng · Sản lượng · Nhập kho TP · Nhật ký chạy máy · Phiếu giao ca · Dừng máy
 
 **Keep-alive:** tab đã mở giữ mounted (`hidden` khi không active) — đổi tab không mất dữ liệu đã tải (đổi bộ lọc chung vẫn remount panel).
@@ -38,3 +40,5 @@ Báo cáo tồn · Phiếu nhận NVL · Trộn NVL · Danh sách cân · Hàng 
 URL riêng từng danh sách (`/danh-sach-bao-cao-san-luong`, …) vẫn mở trang độc lập khi vào từ link/menu khác.
 
 Tab **Lệnh sản xuất** nhúng `ProductionOrdersPanel` từ `src/features/lenh-sx/index.tsx`, dùng bộ lọc chung và quyền `production-orders`; giữ mounted khi đổi tab.
+
+Tab **Nhật ký công việc** (`work-diary`, đứng ngay sau Lệnh SX) nhúng `src/features/nhat-ky-cong-viec/index.tsx`: gộp dòng từ **Lệnh SX** (nhân sự theo vai trò · công việc = lệnh/máy/mã hàng · giờ `ngay_gio_bat_dau`→`ngay_gio_ket_thuc`) và **Phân công CV** (`phan_cong_cv` · giờ theo khung ca `cai_dat_thoi_gian`). Cột **Sản lượng** / **Lỗi hỏng** lấy tổng `so_luong` từ `bao_cao_nghiem_thu` khớp **ngày · ca · máy** (Thành phẩm/Gia công vs SP lỗi/SP rác). Bộ lọc chung: ngày/ca/tìm; máy chỉ lọc dòng nguồn Lệnh SX. Route riêng `/nhat-ky-cong-viec` mở hub với tab này.

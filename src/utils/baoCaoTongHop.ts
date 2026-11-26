@@ -71,14 +71,19 @@ export function buildBaoCaoTongHopRowFromSummary(input: {
   const filmKg = canTuDong
     ? canTuDong.khoi_luong_mang_kg
     : summary.insulationFilmWeightKg || 0;
-  const dinhMucKg = canTuDong
-    ? canTuDong.nhua_dm_kg
-    : summary.insulationPlasticNorm?.weightKg || 0;
+  // TP = nhựa thực tế từ cân (SP − lõi − bì − màng).
   const finishedKg = canTuDong
     ? canTuDong.nhua_tt_kg
     : input.isInsulationMachine
       ? displaySl.weightKg - filmKg
       : displaySl.weightKg;
+  // ĐM trên Biểu đồ TH / bao_cao_tong_hop = nhựa yêu cầu lệnh (SL × trong_luong_nhua).
+  // Không lấy từ cân AI (SP−lõi−bì) vì thường trùng nhựa TT khi thiếu định mức SP.
+  const dinhMucKg =
+    summary.plasticRequiredWeightKg ||
+    summary.insulationPlasticNorm?.weightKg ||
+    (canTuDong ? canTuDong.nhua_dm_kg : 0) ||
+    0;
   const xuatThucDung = exportByKind.plasticKg + dauCa.plasticKg - cuoiCa.plasticKg;
   const loiHongNhua = damaged.plasticKg || 0;
   const loiHongKhac = damaged.otherKg || 0;

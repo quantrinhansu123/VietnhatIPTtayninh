@@ -1707,11 +1707,11 @@ export function buildBbPlasticSummaryDetailView(input: {
     }
     case 'norm': {
       const nhuaDmFormula =
-        input.canTuDongNhuaDmFormula || 'Σ (SP − lõi − bì) Cân AI';
+        input.canTuDongNhuaDmFormula || 'Σ trong_luong_nhua (Kho hàng)';
       return {
         metric: input.metric,
         title: 'Tổng nhựa định mức',
-        subtitle: `${input.displaySanLuongQuantity} cuộn · Nhựa ĐM từ phiếu Cân AI (SP − lõi − bì)`,
+        subtitle: `${input.displaySanLuongQuantity} cuộn · Nhựa ĐM từ Kho hàng (trong_luong_nhua × cuộn)`,
         valueText: `${fmt(input.normKg, 2) ?? 0} kg`,
         formula: nhuaDmFormula,
         source: 'Tab «Dữ liệu cân thực tế» · cột Trọng lượng Nhựa ĐM',
@@ -1745,7 +1745,7 @@ export function buildBbPlasticSummaryDetailView(input: {
         ],
         rows: [
           { chiTieu: 'Tổng nhựa thành phẩm (TT)', congThuc: input.canTuDongNhuaTtFormula || 'SP − lõi − bì − màng', giaTri: fmt(input.finishedKg, 2) },
-          { chiTieu: 'Tổng nhựa định mức (ĐM)', congThuc: input.canTuDongNhuaDmFormula || 'Σ (SP − lõi − bì) Cân AI', giaTri: fmt(-input.normKg, 2) },
+          { chiTieu: 'Tổng nhựa định mức (ĐM)', congThuc: input.canTuDongNhuaDmFormula || 'Σ trong_luong_nhua (Kho hàng)', giaTri: fmt(-input.normKg, 2) },
           { chiTieu: 'Chênh lệch', congThuc: 'TT − ĐM', giaTri: fmt(input.normDiffKg, 2) }
         ],
         totalCells: { chiTieu: 'Tổng', congThuc: '', giaTri: fmt(input.normDiffKg, 2) }

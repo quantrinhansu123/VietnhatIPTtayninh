@@ -18,7 +18,7 @@ Snapshot riêng — **1 dòng / `khoa_on_dinh`**. Ghi khi **Tính toán**.
 
 - `src/features/bieu-do-th/index.tsx` — menu **Quản trị → Biểu đồ TH** · lọc → **bảng tổng hợp** → tab **Lỗi hỏng / Sản lượng / Biểu đồ**
 - `src/features/bieu-do-th/TongHopTreeTable.tsx` — bảng drill-down **Ngày → Ca → Máy**
-- `src/features/bieu-do-th/staffEnrichment.ts` — ghép `cong_nhan_phu_trach` = trưởng ca (`truong_ca` → fallback `nhan_su_chinh` → người đầu `nhan_su`) theo ngày·ca·máy
+- `src/features/bieu-do-th/staffEnrichment.ts` — ghép `cong_nhan_phu_trach` = **chỉ** `truong_ca` / shiftLead theo ngày·ca·máy (không fallback; biểu đồ theo trưởng ca bỏ «Chưa gán»)
 - `src/features/bieu-do-th/chartUi.tsx` — card / KPI / tooltip / gradient dùng chung cho biểu đồ TH
 - `src/features/bieu-do-th/LoiHongPanel.tsx` — tab Lỗi hỏng (KPI + biểu đồ + bảng theo Ngày·Ca·Máy · trưởng ca)
 - `src/features/bieu-do-th/SanLuongPanel.tsx` — tab Sản lượng (KPI + biểu đồ + bảng theo Ngày·Ca·Máy · trưởng ca)

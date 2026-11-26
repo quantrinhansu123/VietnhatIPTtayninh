@@ -60,6 +60,7 @@ export type TableId =
   | 'bb_giai_trinh'
   | 'bb_bao_cao_tinh_toan'
   | 'bao_cao_lech_ghi_chu'
+  | 'bao_cao_cp'
   | 'phan_cong_cv'
   | 'quan_tri_db';
 
@@ -782,14 +783,28 @@ export const TABLE_REGISTRY: Record<TableId, TableRegistryEntry> = {
     ],
     utils: []
   },
+  bao_cao_cp: {
+    table: 'bao_cao_cp',
+    label: 'Báo cáo CP — lỗ hàng lỗi hỏng + lỗ vận hành (hub)',
+    sql: [],
+    apiPrefix: '/api/bb-bao-cao-tinh-toan',
+    serverLines: 'GET /api/bb-bao-cao-tinh-toan (đọc danhGiaGroups.summaryRows)',
+    appTab: 'report-lists → bao-cao-cp',
+    appLines: 'src/features/report-lists/ReportListsHub.tsx',
+    components: [
+      'src/features/bao-cao-cp/index.tsx',
+      'src/features/bao-cao-cp/extractCpRows.ts'
+    ],
+    utils: ['src/utils/controlBoardBbMachineReport.ts']
+  },
   phan_cong_cv: {
     table: 'phan_cong_cv',
     label: 'Kế hoạch CV (phan_cong_cv)',
     sql: ['supabase-phan-cong-cv.sql', 'supabase-phan-cong-cv-gio.sql'],
     apiPrefix: '/api/phan-cong-cv',
     serverLines: 'GET/PUT/DELETE /api/phan-cong-cv (sau /api/phieu-giao-ca)',
-    appTab: 'production-plan-history',
-    appLines: 'src/features/ke-hoach-san-xuat/PhanCongCvPanel.tsx',
+    appTab: 'production-plan-history | report-lists → work-diary',
+    appLines: 'src/features/ke-hoach-san-xuat/PhanCongCvPanel.tsx, src/features/nhat-ky-cong-viec/index.tsx',
     components: ['src/features/ke-hoach-san-xuat/PhanCongCvPanel.tsx'],
     utils: []
   }

@@ -530,16 +530,16 @@ interface HeaderState {
   teamId: string;
 }
 
-function newHeaderState(overrides?: Partial<{ ngay: string; ca: string }>): HeaderState {
+function newHeaderState(overrides?: Partial<HeaderState>): HeaderState {
   return {
     ngay: overrides?.ngay || todayIso(),
     ca: overrides?.ca || '',
-    lan: '1',
-    gio: nowTimeValue(),
-    ma_may: '',
-    ten_may: '',
-    machineRef: '',
-    teamId: ''
+    lan: overrides?.lan || '1',
+    gio: overrides?.gio || nowTimeValue(),
+    ma_may: overrides?.ma_may || '',
+    ten_may: overrides?.ten_may || '',
+    machineRef: overrides?.machineRef || '',
+    teamId: overrides?.teamId || ''
   };
 }
 
@@ -566,6 +566,8 @@ function newSectionsState(): Record<MaterialType, SectionState> {
 export type AcceptanceReportCreatePrefill = {
   ngay: string;
   ca: string;
+  ma_may?: string;
+  ten_may?: string;
 };
 
 export default function AcceptanceReportForm({
@@ -678,7 +680,39 @@ export default function AcceptanceReportForm({
 
   useEffect(() => {
     if (!createPrefill) return;
-    setHeader(newHeaderState({ ngay: createPrefill.ngay, ca: createPrefill.ca }));
+    const wantsMachine = Boolean(
+      String(createPrefill.ma_may || '').trim() || String(createPrefill.ten_may || '').trim()
+    );
+    // Chờ danh sách máy nếu prefill có máy, để gắn đúng teamId / machineRef.
+    if (wantsMachine && machines.length === 0) return;
+
+    const prefillMay = String(createPrefill.ma_may || createPrefill.ten_may || '').trim();
+    const machine =
+      machines.find(item => item.code === createPrefill.ma_may) ||
+      machines.find(item => item.name === createPrefill.ten_may) ||
+      machines.find(item => item.code === createPrefill.ten_may || item.name === createPrefill.ma_may) ||
+      machines.find(
+        item =>
+          prefillMay &&
+          (item.code === prefillMay ||
+            item.name === prefillMay ||
+            item.code.includes(prefillMay) ||
+            item.name.includes(prefillMay) ||
+            prefillMay.includes(item.code) ||
+            prefillMay.includes(item.name))
+      ) ||
+      null;
+
+    setHeader(
+      newHeaderState({
+        ngay: createPrefill.ngay,
+        ca: createPrefill.ca,
+        ma_may: machine?.code || String(createPrefill.ma_may || '').trim(),
+        ten_may: machine?.name || String(createPrefill.ten_may || createPrefill.ma_may || '').trim(),
+        machineRef: machine?.name || machine?.code || String(createPrefill.ten_may || createPrefill.ma_may || '').trim(),
+        teamId: machine?.id || ''
+      })
+    );
     setSections(newSectionsState());
     setEditingId(null);
     setEditingType(null);
@@ -686,7 +720,7 @@ export default function AcceptanceReportForm({
     setError('');
     setMessage('');
     onCreatePrefillConsumed?.();
-  }, [createPrefill, onCreatePrefillConsumed]);
+  }, [createPrefill, machines, onCreatePrefillConsumed]);
 
   useEffect(() => {
     if (!highlightLine) return;

@@ -7,8 +7,8 @@ import {
   resolveCanLoiKg,
   resolveCanSpKg,
   resolveInsulationFilmBomWeightPerUnit,
+  resolveNhuaDinhMucKg,
   resolveTrongLuongBiKg,
-  resolveTrongLuongNhuaKg,
   resolveTrongLuongNhuaKgMinusFilm,
   type CanTuDongWeightRow
 } from './canTuDongWeights';
@@ -39,11 +39,11 @@ export type CanTuDongTongHopDetailRow = {
   may: string;
   so_cuon: number;
   tong_trong_luong_kg: number;
-  /** Trọng lượng Nhựa ĐM = Σ (Cân SP − Cân lõi − bì) từ phiếu Cân AI. */
+  /** Trọng lượng Nhựa ĐM = Σ `san_pham.trong_luong_nhua` (fallback TL tiêu chuẩn − lõi − bì). */
   nhua_dm_kg: number;
   /** Khối lượng màng = Σ (BOM màng / cuộn). */
   khoi_luong_mang_kg: number;
-  /** Trọng lượng Nhựa TT = SP − lõi − bì − màng. */
+  /** Trọng lượng Nhựa TT = SP − lõi − bì − màng (Cân AI). */
   nhua_tt_kg: number;
   /** Chênh lệch nhựa = TT − ĐM. */
   chenh_lech_nhua_kg: number;
@@ -157,7 +157,12 @@ export function buildCanTuDongTongHopDetailRows(
   records: CanTuDongWeightRow[],
   products: ProductRow[]
 ): CanTuDongTongHopDetailRow[] {
-  const { coreKgByProductCode, filmKgByProductCode } = buildCanTuDongProductWeightMaps(products);
+  const {
+    standardKgByProductCode,
+    coreKgByProductCode,
+    plasticKgByProductCode,
+    filmKgByProductCode
+  } = buildCanTuDongProductWeightMaps(products);
   const buckets = new Map<
     string,
     {
@@ -173,6 +178,7 @@ export function buildCanTuDongTongHopDetailRows(
       loi_dm_kg: number;
       loi_tt_kg: number;
       trong_luong_bi_kg: number;
+      nhuaDmParts: Map<string, CanTuDongFormulaPart>;
       mangParts: Map<string, CanTuDongFormulaPart>;
     }
   >();
@@ -196,6 +202,7 @@ export function buildCanTuDongTongHopDetailRows(
       loi_dm_kg: 0,
       loi_tt_kg: 0,
       trong_luong_bi_kg: 0,
+      nhuaDmParts: new Map<string, CanTuDongFormulaPart>(),
       mangParts: new Map<string, CanTuDongFormulaPart>()
     };
 
@@ -212,16 +219,21 @@ export function buildCanTuDongTongHopDetailRows(
     const nhuaTt = resolveTrongLuongNhuaKgMinusFilm(row, filmKgPerRoll);
     if (nhuaTt != null) current.nhua_tt_kg += nhuaTt;
 
-    // Nhựa ĐM lấy từ Cân AI: SP − lõi − bì (cùng công thức sync `tong_trong_luong_nhua_kg`).
-    const nhuaDm = resolveTrongLuongNhuaKg(row);
-    if (nhuaDm != null) current.nhua_dm_kg += nhuaDm;
+    // Nhựa ĐM = định mức Kho hàng / cuộn (cùng /can-tu-dong) — không lấy từ cân AI.
+    const standardKg = maSpKey ? standardKgByProductCode.get(maSpKey) : undefined;
+    const plasticKg = maSpKey ? plasticKgByProductCode.get(maSpKey) : undefined;
+    const coreKg = maSpKey ? coreKgByProductCode.get(maSpKey) : undefined;
+    const nhuaDm = resolveNhuaDinhMucKg(standardKg, coreKg, plasticKg);
+    if (nhuaDm != null) {
+      current.nhua_dm_kg += nhuaDm;
+      if (maSpKey) bumpFormulaPart(current.nhuaDmParts, maSpKey, nhuaDm);
+    }
 
     if (filmKgPerRoll != null && filmKgPerRoll > 0 && maSpKey) {
       current.khoi_luong_mang_kg += filmKgPerRoll;
       bumpFormulaPart(current.mangParts, maSpKey, filmKgPerRoll);
     }
 
-    const coreKg = maSpKey ? coreKgByProductCode.get(maSpKey) : undefined;
     if (coreKg != null) current.loi_dm_kg += coreKg;
 
     buckets.set(key, current);
@@ -236,6 +248,10 @@ export function buildCanTuDongTongHopDetailRows(
         item.nhua_tt_kg !== 0
           ? (chenh_lech_nhua_kg / item.nhua_tt_kg) * 100
           : null;
+      const nhua_dm_formula = buildKgTimesRollFormula(
+        item.nhuaDmParts,
+        'Σ trong_luong_nhua (Kho hàng)'
+      );
       const mang_formula = buildKgTimesRollFormula(item.mangParts, 'BOM màng × cuộn');
       return {
         khoa_on_dinh: item.khoa_on_dinh,
@@ -252,9 +268,9 @@ export function buildCanTuDongTongHopDetailRows(
         loi_dm_kg: round3(item.loi_dm_kg),
         loi_tt_kg: round3(item.loi_tt_kg),
         trong_luong_bi_kg: round3(item.trong_luong_bi_kg),
-        nhua_dm_formula: 'Σ (SP − lõi − bì) Cân AI',
+        nhua_dm_formula,
         mang_formula,
-        nhua_dm_parts: [] as CanTuDongFormulaPart[],
+        nhua_dm_parts: mapToFormulaParts(item.nhuaDmParts),
         mang_parts: mapToFormulaParts(item.mangParts)
       };
     })
@@ -301,12 +317,17 @@ export function sumCanTuDongTongHopDetailRows(rows: CanTuDongTongHopDetailRow[])
     }
   );
 
+  const nhuaDmParts = new Map<string, CanTuDongFormulaPart>();
   for (const row of rows) {
+    mergeFormulaParts(nhuaDmParts, row.nhua_dm_parts);
     mergeFormulaParts(mangParts, row.mang_parts);
   }
-  totals.nhua_dm_formula = 'Σ (SP − lõi − bì) Cân AI';
+  totals.nhua_dm_formula = buildKgTimesRollFormula(
+    nhuaDmParts,
+    'Σ trong_luong_nhua (Kho hàng)'
+  );
   totals.mang_formula = buildKgTimesRollFormula(mangParts, 'BOM màng × cuộn');
-  totals.nhua_dm_parts = [];
+  totals.nhua_dm_parts = mapToFormulaParts(nhuaDmParts);
   totals.mang_parts = mapToFormulaParts(mangParts);
 
   // Chênh lệch = thực tế − định mức (không cộng dồn từng dòng để tránh lệch làm tròn).
@@ -321,16 +342,26 @@ export function sumCanTuDongTongHopDetailRows(rows: CanTuDongTongHopDetailRow[])
 
 /**
  * Tổng Nhựa ĐM banner «Tổng hợp nhựa» — cùng logic cột «Trọng lượng Nhựa ĐM» tab cân thực tế.
- * Σ (Cân SP − Cân lõi − bì) từ phiếu Cân AI.
+ * Σ `san_pham.trong_luong_nhua` / cuộn (fallback TL tiêu chuẩn − lõi − bì).
  */
 export function computeCanTuDongNhuaDinhMucTotals(
   records: CanTuDongWeightRow[],
-  _products?: ProductRow[]
+  products: ProductRow[] = []
 ): { weightKg: number; counted: number; formula: string } {
+  const {
+    standardKgByProductCode,
+    coreKgByProductCode,
+    plasticKgByProductCode
+  } = buildCanTuDongProductWeightMaps(products);
   let weightKg = 0;
   let counted = 0;
   for (const row of records) {
-    const nhuaDm = resolveTrongLuongNhuaKg(row);
+    const maSpKey = normalizeProductCodeKey(parseCanTuDongQrProductCode(row.qr_code));
+    const nhuaDm = resolveNhuaDinhMucKg(
+      maSpKey ? standardKgByProductCode.get(maSpKey) : undefined,
+      maSpKey ? coreKgByProductCode.get(maSpKey) : undefined,
+      maSpKey ? plasticKgByProductCode.get(maSpKey) : undefined
+    );
     if (nhuaDm == null) continue;
     weightKg += nhuaDm;
     counted += 1;
@@ -338,7 +369,7 @@ export function computeCanTuDongNhuaDinhMucTotals(
   return {
     weightKg: Math.round(weightKg * 1000) / 1000,
     counted,
-    formula: 'Σ (SP − lõi − bì) Cân AI'
+    formula: 'Σ trong_luong_nhua (Kho hàng)'
   };
 }
 
@@ -375,8 +406,8 @@ export function explainCanTuDongTongHopRowFormulas(row: {
 
   return {
     tongTrongLuong: 'Σ Cân sản phẩm',
-    nhuaDmShort: 'SP − lõi − bì (Cân AI)',
-    nhuaDm: row.nhua_dm_formula || 'Σ (SP − lõi − bì) Cân AI',
+    nhuaDmShort: 'trong_luong_nhua × cuộn',
+    nhuaDm: row.nhua_dm_formula || 'Σ trong_luong_nhua (Kho hàng)',
     mangShort: 'BOM màng × cuộn',
     mang: row.mang_formula || 'BOM màng × cuộn',
     nhuaTtShort: 'SP − lõi − bì − màng',

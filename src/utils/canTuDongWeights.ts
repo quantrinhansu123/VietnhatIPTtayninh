@@ -144,7 +144,7 @@ export function resolveNhuaDinhMucKg(
   return standardKg - core - DEFAULT_CAN_TU_DONG_BI_KG;
 }
 
-/** Helper cũ: KL nhựa+phụ gia Kho hàng / cuộn. Tab cân thực tế đã chuyển Nhựa ĐM sang `resolveTrongLuongNhuaKg` (Cân AI). */
+/** KL nhựa+phụ gia Kho hàng / cuộn — nguồn Nhựa ĐM (cùng `resolveNhuaDinhMucKg`). */
 export function resolveCanTuDongNhuaDinhMucKgPerRoll(plasticKgFromProduct?: number | null): number | null {
   if (plasticKgFromProduct != null && Number.isFinite(plasticKgFromProduct) && plasticKgFromProduct > 0) {
     return plasticKgFromProduct;
@@ -430,6 +430,8 @@ export type InsulationProductAlias = {
   rollWidth?: string | null;
   rollLength?: string | null;
   totalWeight?: string | null;
+  coreWeight?: string | null;
+  plasticWeight?: string | null;
   nplItems?: InsulationFilmBomItem[] | null;
 };
 
@@ -552,19 +554,34 @@ export function computeInsulationFilmWeightKg(
 
 /** Nhựa định mức máy cách nhiệt = Σ (Cân SP − Cân lõi − bì) từ phiếu Cân AI. */
 export function computeInsulationPlasticNorm(
-  _products: InsulationProductAlias[],
+  products: InsulationProductAlias[],
   records: CanTuDongWeightRow[]
 ): { weightKg: number; counted: number } {
-  return records.reduce(
-    (total, record) => {
-      const nhuaDm = resolveTrongLuongNhuaKg(record);
-      if (nhuaDm === null) return total;
-      return {
-        weightKg: total.weightKg + nhuaDm,
-        counted: total.counted + 1
-      };
-    },
-    { weightKg: 0, counted: 0 }
+  const parseMapNum = (value: unknown): number | null => {
+    if (value === null || value === undefined || value === '' || value === '-') return null;
+    const num = typeof value === 'number' ? value : Number(String(value).trim().replace(',', '.'));
+    return Number.isFinite(num) && num > 0 ? num : null;
+  };
+  const standardKgByProductCode = new Map<string, number>();
+  const coreKgByProductCode = new Map<string, number>();
+  const plasticKgByProductCode = new Map<string, number>();
+  for (const product of products) {
+    const standard = parseMapNum(product.totalWeight);
+    const core = parseMapNum(product.coreWeight);
+    const plastic = parseMapNum(product.plasticWeight);
+    for (const raw of [product.code, product.newCode, product.amisCode]) {
+      const key = normalizeProductCodeKey(String(raw || ''));
+      if (!key) continue;
+      if (standard != null) standardKgByProductCode.set(key, standard);
+      if (core != null) coreKgByProductCode.set(key, core);
+      if (plastic != null) plasticKgByProductCode.set(key, plastic);
+    }
+  }
+  return sumCanTuDongNhuaDinhMucKg(
+    records,
+    standardKgByProductCode,
+    coreKgByProductCode,
+    plasticKgByProductCode
   );
 }
 

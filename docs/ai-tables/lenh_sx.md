@@ -28,6 +28,8 @@
 
 `ke_hoach_san_xuat`, `don_hang`, `san_pham`
 
+**Hub xem báo cáo:** tab **Nhật ký công việc** (cạnh Lệnh SX) tách từng nhân sự theo vai trò trên lệnh, kèm giờ bắt đầu/kết thúc lệnh.
+
 > Tab báo cáo BB «Dữ liệu trong lệnh SX» lưu riêng bảng **`bc_lsx`** — không dùng bảng con của `lenh_sx`. Xem [bc_lsx.md](./bc_lsx.md).
 
 ### Nhân sự theo vai trò

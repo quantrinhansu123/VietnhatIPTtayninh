@@ -16,6 +16,7 @@ import {
 } from 'recharts';
 import { BarChart3, TrendingUp } from 'lucide-react';
 import { LOI_HONG_RATE_THRESHOLD_PERCENT, percentAxisDomain } from './comparisonData';
+import { staffChartLabels } from './staffEnrichment';
 
 export type BieuDoThChartSourceRow = {
   ngay_tu: string;
@@ -263,11 +264,9 @@ export function buildBieuDoThStaffChartPoints(rows: BieuDoThChartSourceRow[]): S
   const buckets = new Map<string, StaffChartPoint>();
 
   for (const row of rows) {
-    const names = String(row.cong_nhan_phu_trach || '')
-      .split(/[,;+]/)
-      .map(name => name.trim())
-      .filter(name => name && name !== '-');
-    const labels = names.length > 0 ? names : ['Chưa gán'];
+    // Chỉ tính trưởng ca đã gán — bỏ dòng chưa có truong_ca (không bucket «Chưa gán»).
+    const labels = staffChartLabels(row.cong_nhan_phu_trach);
+    if (labels.length === 0) continue;
     for (const label of labels) {
       const current = buckets.get(label) || {
         key: label,
@@ -277,7 +276,7 @@ export function buildBieuDoThStaffChartPoints(rows: BieuDoThChartSourceRow[]): S
         loiHong: 0,
         chenhLech: 0
       };
-      // Nhiều CN trên 1 dòng: chia đều để tránh cộng trùng khi lọc tổng.
+      // Nhiều trưởng ca trên 1 dòng: chia đều để tránh cộng trùng khi lọc tổng.
       const share = 1 / labels.length;
       current.slSanLuong = addMetric(current.slSanLuong, (row.sl_san_luong ?? 0) * share);
       current.tlNhuaTp = addMetric(current.tlNhuaTp, (row.tl_nhua_thanh_pham_kg ?? 0) * share);

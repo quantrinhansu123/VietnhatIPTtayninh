@@ -11,8 +11,10 @@ import {
   calcKichThuocTong,
   formatConversionMaterial,
   inferUnitLengthCm,
-  resolveDestUnitWeight
+  resolveDestUnitWeight,
+  type ConversionMaterialOption
 } from './materials';
+import { buildDestHintsFromProducts, findProductsUsingMaterial } from './productHints';
 
 const input = {
   ngay: '2026-11-15',
@@ -50,6 +52,42 @@ test('Kho NVL options: normalize, deduplicate codes, preserve names, units, weig
   assert.equal(formatConversionMaterial(options[1]), 'B · Nhựa B · Kg');
   assert.deepEqual(buildConversionMaterialOptions(null), []);
   assert.deepEqual(buildConversionMaterialOptions({ materials: 'invalid' }), []);
+});
+
+test('gợi ý đích từ thành phần SP: ống ngắn hơn gốc + SP dùng mã', () => {
+  const materials = new Map<string, ConversionMaterialOption>([
+    ['ONG-1.38M', { code: 'ONG-1.38M', name: 'Ống 1.38m', unit: 'Cái', unitWeight: 0.38, unitLength: 138 }],
+    ['ONG-30CM', { code: 'ONG-30CM', name: 'Ống 30cm', unit: 'Cái', unitWeight: 0.08, unitLength: 30 }],
+    ['ONG-19.5CM', { code: 'ONG-19.5CM', name: 'Ống 19.5cm', unit: 'Cái', unitWeight: 0.05, unitLength: 19.5 }]
+  ]);
+  const products = [
+    {
+      id: '1',
+      code: 'SP-A',
+      name: 'Bao A',
+      items: [
+        {
+          code: 'ONG-30CM',
+          name: 'Ống 30',
+          amountType: 'quantity' as const,
+          percent: null,
+          quantity: 2,
+          unit: 'Cái',
+          substitutes: [{ code: 'ONG-19.5CM', name: '', unit: 'Cái', quantity: 1, componentQuantity: 1 }]
+        }
+      ]
+    }
+  ];
+  const hints = buildDestHintsFromProducts({
+    products,
+    sourceCode: 'ONG-1.38M',
+    sourceLengthCm: 138,
+    materialByCode: materials
+  });
+  assert.ok(hints.some(item => item.code === 'ONG-30CM' && item.suggestedDinhMuc === 4));
+  assert.ok(hints.some(item => item.code === 'ONG-19.5CM'));
+  assert.equal(hints.find(item => item.code === 'ONG-30CM')?.products[0].code, 'SP-A');
+  assert.equal(findProductsUsingMaterial(products, 'ONG-30CM')[0].code, 'SP-A');
 });
 
 test('cắt lõi helpers: ĐM → SL đích, KT tổng, TL/cái tỷ lệ chiều dài', () => {

@@ -55,7 +55,7 @@ import {
   ClipboardList, Factory, LayoutDashboard, FlaskConical, ArrowDownToLine, PackageMinus, Scale, Settings, Receipt,
   CalendarDays, ChevronRight, ChevronLeft, ClipboardCheck, PackageX, BarChart3, Activity, Truck,
   ArrowRight, ArrowDown, ArrowUpRight, ShieldCheck, UserRound, Warehouse, Ban, ArrowLeftRight, ScanBarcode, BadgeCheck,
-  Sparkles, X, Settings2, Users, Store, Calculator, GanttChart, Wrench, Database
+  Sparkles, X, Settings2, Users, Store, Calculator, GanttChart, Wrench, Database, NotebookPen
 } from 'lucide-react';
 import type { AppTab } from '../routes';
 import { hubHasAllowedChild, resolveAccessTab } from './tabAccess';
@@ -295,6 +295,13 @@ export const REPORT_LIST_MENU_ITEMS: MenuCardConfig[] = [
     desc: 'Xem, tra cứu và in lệnh sản xuất theo ngày, ca và máy.',
     icon: ClipboardList,
     tab: 'production-orders'
+  },
+  {
+    title: 'Nhật ký công việc',
+    desc: 'Nhân sự làm việc gì, từ giờ đến giờ — gộp từ lệnh SX và phân công CV.',
+    icon: NotebookPen,
+    icon3d: spiralNotepad3d,
+    tab: 'work-diary'
   },
   {
     title: 'Danh sách báo cáo tồn',
@@ -1122,6 +1129,7 @@ export const TAB_TITLE_MAP: Record<string, { group: string; sub: string }> = {
   'report-forms': { group: 'Sản xuất', sub: 'Nhập báo cáo ca' },
   'form': { group: 'Sản xuất', sub: 'Nhập báo cáo ca' },
   'report-lists': { group: 'Sản xuất', sub: 'Lịch sử công việc' },
+  'work-diary': { group: 'Sản xuất', sub: 'Nhật ký công việc' },
   'acceptance-report-list': { group: 'QC', sub: 'Kiểm tra kho thành phẩm' },
   'weighing-summary-list': { group: 'QC', sub: 'Phiếu cân ca' },
   'can-tu-dong': { group: 'Sản xuất', sub: 'Danh sách cân' },

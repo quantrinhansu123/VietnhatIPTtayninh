@@ -947,7 +947,7 @@ export default function App() {
                   setAcceptanceCreatePrefill={setAcceptanceCreatePrefill}
                 />
               </motion.div>
-            ) : activeTab === 'report-lists' ? (
+            ) : activeTab === 'report-lists' || activeTab === 'work-diary' ? (
               <motion.div
                 key="report-lists-hub"
                 initial={{ opacity: 0, y: 8 }}
@@ -960,6 +960,7 @@ export default function App() {
                   onBack={() => goBack('factory-cong-nhan')}
                   currentUser={authUser}
                   onNavigate={navigateToTab}
+                  initialHubTab={activeTab === 'work-diary' ? 'work-diary' : undefined}
                   onEditMachineNvlReport={report => {
                     setMachineNvlEditReport(report);
                     navigateToTab('machine-nvl-report');
@@ -1824,7 +1825,16 @@ export default function App() {
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.15 }}
               >
-                <ProductionPlanHistoryPanel onBack={() => goBack('production-reports')} />
+                <ProductionPlanHistoryPanel
+                  onBack={() => goBack('production-reports')}
+                  onOpenAcceptanceReport={prefill => {
+                    setAcceptanceEditReport(null);
+                    setAcceptanceEditReportGroup(null);
+                    setAcceptanceCreatePrefill(prefill);
+                    setAcceptanceShowForm(true);
+                    navigateToTab('acceptance-report');
+                  }}
+                />
               </motion.div>
             ) : activeTab === 'settings' ? (
               <motion.div

@@ -106,7 +106,42 @@ export interface ProductRow {
 
 export type ProductNplAmountType = 'percent' | 'quantity';
 
+/**
+ * Vật tư thay thế của một thành phần: `quantity` cái vật tư này = `componentQuantity` đơn vị thành phần.
+ * VD thành phần ONG-60CM, thay thế ONG-30CM: quantity 2, componentQuantity 1 (ONG30 ×2 = ONG60 ×1).
+ */
+export interface ProductNplSubstitute {
+  code: string;
+  name: string;
+  unit: string;
+  quantity: number;
+  componentQuantity: number;
+}
+
+export function parseProductNplSubstitutes(raw: unknown): ProductNplSubstitute[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ProductNplSubstitute[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') continue;
+    const r = entry as Record<string, unknown>;
+    const code = String(r.ma ?? r.code ?? '').trim();
+    const quantity = Number(r.so_luong ?? r.quantity);
+    const componentQuantity = Number(r.so_luong_tp ?? r.componentQuantity ?? 1);
+    if (!code || !(quantity > 0) || !(componentQuantity > 0)) continue;
+    out.push({
+      code,
+      name: String(r.ten ?? r.name ?? '').trim(),
+      unit: String(r.don_vi ?? r.unit ?? '').trim(),
+      quantity,
+      componentQuantity
+    });
+  }
+  return out;
+}
+
 export interface ProductNplItem {
+  /** Vật tư thay thế / tương đương (xem `ProductNplSubstitute`). */
+  substitutes?: ProductNplSubstitute[];
   code: string;
   name: string;
   amountType: ProductNplAmountType;
@@ -286,7 +321,8 @@ export function parseProductNplItems(raw: unknown): ProductNplItem[] {
           percent: Number.isFinite(percentRaw) && percentRaw >= 0 ? percentRaw : null,
           quantity: quantityMissing && hasWeight ? null : quantity,
           unit,
-          weightKg: hasWeight ? weightRaw : null
+          weightKg: hasWeight ? weightRaw : null,
+          substitutes: parseProductNplSubstitutes(record.thay_the ?? record.substitutes)
         };
       }
 
@@ -300,7 +336,8 @@ export function parseProductNplItems(raw: unknown): ProductNplItem[] {
         percent,
         quantity: null,
         unit: unit === '-' ? '%' : unit,
-        weightKg: Number.isFinite(weightRaw) && weightRaw >= 0 ? weightRaw : null
+        weightKg: Number.isFinite(weightRaw) && weightRaw >= 0 ? weightRaw : null,
+        substitutes: parseProductNplSubstitutes(record.thay_the ?? record.substitutes)
       };
     })
     .filter((item): item is ProductNplItem => Boolean(item));
@@ -315,6 +352,13 @@ export function formatProductNplSummary(items: ProductNplItem[]) {
 
 export function productNplItemsToJson(items: ProductNplItem[]) {
   return items.map(item => {
+    const thay_the = (item.substitutes ?? []).map(sub => ({
+      ma: sub.code,
+      ten: sub.name,
+      don_vi: sub.unit || null,
+      so_luong: sub.quantity,
+      so_luong_tp: sub.componentQuantity
+    }));
     // Giữ nguyên số Excel (kể cả 0) — không làm tròn khi đẩy lên API.
     const weightKg =
       item.weightKg !== null && item.weightKg !== undefined && Number.isFinite(item.weightKg)
@@ -335,7 +379,8 @@ export function productNplItemsToJson(items: ProductNplItem[]) {
           item.percent !== null && item.percent !== undefined && Number.isFinite(item.percent)
             ? item.percent
             : null,
-        khoi_luong_kg: weightKg
+        khoi_luong_kg: weightKg,
+        thay_the
       };
     }
 
@@ -346,7 +391,8 @@ export function productNplItemsToJson(items: ProductNplItem[]) {
       don_vi: '%',
       phan_tram: item.percent,
       so_luong: null,
-      khoi_luong_kg: weightKg
+      khoi_luong_kg: weightKg,
+      thay_the
     };
   });
 }

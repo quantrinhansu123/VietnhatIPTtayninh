@@ -23,6 +23,8 @@ export const TAB_ACCESS_ALIASES: Record<string, string> = {
   'dashboard-auto': 'dashboard',
   /** Trang chi tiết lệnh SX (mở tab mới) dùng chung quyền với danh sách lệnh SX. */
   'production-order-detail': 'production-orders',
+  /** Tab Nhật ký công việc trong hub Xem báo cáo. */
+  'work-diary': 'report-lists',
   /** Trang chi tiết đơn hàng (mở tab mới) dùng chung quyền với danh sách đơn hàng. */
   'orders-detail': 'orders',
   /** Trả kho NVL dùng chung quyền phiếu xuất nhập kho - Vật tư. */
@@ -58,6 +60,8 @@ export const HUB_IMPLIED_TABS: Record<string, readonly string[]> = {
     'acceptance-report-list'
   ],
   'report-lists': [
+    'production-orders',
+    'work-diary',
     'machine-nvl-report-list',
     'material-request-list',
     'mixing-report-list',

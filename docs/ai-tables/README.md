@@ -40,7 +40,7 @@ Quy đổi vật liệu trong hub `/danh-sach-bao-cao`: [quy_doi_vat_lieu.md](./
 | `kiem_kho` | `/kiem-kho` | [kiem_kho.md](./kiem_kho.md) |
 | `kho_cho` | `/can-tu-dong` (nút Nhập kho) | [kho_cho.md](./kho_cho.md) |
 | *(hub)* `report-forms` | `/phieu-bao-cao` — **tab** nhập báo cáo | [phieu_bao_cao.md](./phieu_bao_cao.md) |
-| *(hub)* `report-lists` | `/danh-sach-bao-cao` — **tab** xem danh sách báo cáo | [danh_sach_bao_cao.md](./danh_sach_bao_cao.md) |
+| *(hub)* `report-lists` | `/danh-sach-bao-cao` — **tab** xem danh sách báo cáo (gồm **Nhật ký công việc**) | [danh_sach_bao_cao.md](./danh_sach_bao_cao.md) |
 | `doi_soat` | `/doi-soat` (hub `/phieu-bao-cao`) · DB `njdlkyx…` | [doi_soat.md](./doi_soat.md) |
 | `quan_ly_kho` | `/quan-ly-kho` | [quan_ly_kho.md](./quan_ly_kho.md) |
 | `bao_cao_hang_hong` | `/bao-cao-hang-hong` | [bao_cao_hang_hong.md](./bao_cao_hang_hong.md) |
@@ -96,6 +96,7 @@ Quy đổi vật liệu trong hub `/danh-sach-bao-cao`: [quy_doi_vat_lieu.md](./
 | `bb_giai_trinh` | *(giải trình /phan-tich-tu-dong)* | [bb_giai_trinh.md](./bb_giai_trinh.md) |
 | `bb_bao_cao_tinh_toan` | *(snapshot tính toán BB)* | [bb_bao_cao_tinh_toan.md](./bb_bao_cao_tinh_toan.md) |
 | `bao_cao_lech_ghi_chu` | hub `/danh-sach-bao-cao` → tab **Báo cáo** | [bao_cao_lech_ghi_chu.md](./bao_cao_lech_ghi_chu.md) |
+| *(hub)* `bao_cao_cp` | hub `/danh-sach-bao-cao` → tab **Báo cáo CP** | [bao_cao_cp.md](./bao_cao_cp.md) |
 | `phan_cong_cv` | `/ke-hoach-san-xuat` · Loại **Kế hoạch CV** | [phan_cong_cv.md](./phan_cong_cv.md) |
 | *(admin)* `quan_tri_db` | `/quan-tri-db` — duyệt bảng / SQL mọi Supabase | [quan_tri_db.md](./quan_tri_db.md) |
 

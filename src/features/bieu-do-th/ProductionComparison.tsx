@@ -33,6 +33,7 @@ import {
   percentAxisDomain,
   summarize
 } from './comparisonData';
+import { staffChartLabels } from './staffEnrichment';
 
 const fmt = fmtKg;
 const groupLabel = (row: BaoCaoTongHopListRow) =>
@@ -44,7 +45,7 @@ const groupLabel = (row: BaoCaoTongHopListRow) =>
         ? 'Niêm phong'
         : 'Máy khác / chưa phân nhóm';
 const staffLabel = (row: BaoCaoTongHopListRow) =>
-  String(row.cong_nhan_phu_trach || '').trim() || 'Chưa gán';
+  staffChartLabels(row.cong_nhan_phu_trach).join(', ');
 
 type Point = ReturnType<typeof summarize>[number];
 
@@ -263,7 +264,10 @@ export default function ProductionComparison({
   const byMachine = summarize(selected, r => r.may);
   const byGroup = summarize(selected, groupLabel);
   const byDay = summarize(selected, r => r.ngay_tu);
-  const byStaff = summarize(selected, staffLabel);
+  const byStaff = summarize(
+    selected.filter(r => staffChartLabels(r.cong_nhan_phu_trach).length > 0),
+    staffLabel
+  );
   const total = summarize(selected, () => 'Tổng')[0];
 
   if (isLoading) {

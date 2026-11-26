@@ -4,7 +4,7 @@
 | **Tab** | `production-plan-history` → `/ke-hoach-san-xuat` |
 | **SQL** | `supabase-ke-hoach-sx.sql`, `supabase-ke-hoach-san-xuat.sql` |
 
-**API:** `server.ts` 6842–7070 — `GET/PUT /api/ke-hoach-sx`
+**API:** `server.ts` — `GET/PUT /api/ke-hoach-sx` · `GET ?with_lines=1` gom dòng kế hoạch 1 lần (KHCV, tránh N+1 `?id=`)
 **UI:** `src/features/ke-hoach-san-xuat/` (+ lịch sử/shell trong `src/App.tsx` nếu còn)  
 **Components:** `ProductionPlanNvlPrintSheet.tsx`, `ControlBoardShiftSummaryTable.tsx`, `ProductionPlanBoardSheet.tsx` (bảng KHSX theo máy + in A3 ngang)  
 **Utils:** `controlBoardShiftSummary.ts`, `controlBoardShiftSummaryDetails.ts`, `productionPlanBoard.ts` (dựng ma trận cột máy × dòng ca)
@@ -17,4 +17,8 @@
 
 **Kế hoạch CV:** section `PhanCongCvPanel` (`phan_cong_cv`, `GET/PUT /api/phan-cong-cv` theo Ngày + Ca).
 
-**Bảng theo máy (mẫu Excel nhà máy):** section "Kế hoạch SX theo máy (bảng ngày)" trên `/ke-hoach-san-xuat` — cột = máy, khối I = lao động, khối II = lệnh SX theo ca; nội dung ô ghép tự động từ lệnh SX + SP (mã máy, khổ cuộn, chiều dài, trọng lượng, quy cách cắt khúc, số lượng). Nút "In bảng A3" in khổ 420×297mm (landscape).
+**Bảng theo máy / KHCV (mẫu Excel nhà máy):** section "Kế hoạch SX theo máy (KHCV)" trên `/ke-hoach-san-xuat` — cột = máy, khối I = lao động, khối II = lệnh SX theo ca; nội dung ô ghép tự động từ lệnh SX + SP. **Chọn nhiều lệnh / nhiều ngày:** theo bộ lọc Ngày hoặc Từ–Đến, tick lệnh đưa vào bảng rồi xem / **In bảng A3** (420×297mm landscape).
+
+**In chi tiết kế hoạch:** tick lệnh + tùy chọn **In kèm KHCV** (sau khi in phiếu lệnh sẽ in bảng máy từ các dòng đang in).
+
+**Nghiệm thu:** nút trên từng dòng chi tiết (và thao tác trong modal) mở `/bao-cao-san-luong` với prefill ngày · ca · máy của lệnh.

@@ -4146,7 +4146,7 @@ export default function ControlBoardBbMachineReportTable({
                   secondaryMetric:
                     isInsulationMachine && sanLuongSource === 'can-tu-dong' ? ('norm' as const) : undefined,
                   secondaryTitle:
-                    'Σ (Cân SP − Cân lõi − bì) từ Cân AI — cột «Trọng lượng Nhựa ĐM» tab cân thực tế',
+                    'Σ trong_luong_nhua (Kho hàng) × cuộn — cột «Trọng lượng Nhựa ĐM» tab cân thực tế',
                   secondaryDisplay:
                     isInsulationMachine && sanLuongSource === 'can-tu-dong'
                       ? isLoading
@@ -7465,8 +7465,8 @@ export default function ControlBoardBbMachineReportTable({
                                 <div className="border-b border-zinc-200 bg-[#e8f0ed] px-3 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-800">
                                   Báo cáo lệch định mức
                                   <span className="mt-0.5 block font-semibold normal-case tracking-normal text-zinc-600 xl:mt-0 xl:ml-2 xl:inline">
-                                    Nhựa ĐM / TL nhựa = tổng cân tự động theo Ngày · Ca · Máy. Lệch = TL nhựa −
-                                    Nhựa ĐM
+                                    Nhựa ĐM = định mức Kho hàng × cuộn; TL nhựa = cân AI (SP − lõi − bì − màng).
+                                    Lệch = TL nhựa − Nhựa ĐM
                                   </span>
                                 </div>
                                 <div className="space-y-3 p-3">
@@ -7583,8 +7583,8 @@ export default function ControlBoardBbMachineReportTable({
                               if (dataRows.length === 0) {
                                 return (
                                   <p className="px-3 py-6 text-center text-sm font-semibold text-zinc-400">
-                                    Chưa có dòng vật tư trộn. Bấm «Tính toán» — Nhựa ĐM / TL nhựa lấy từ cân
-                                    tự động.
+                                    Chưa có dòng vật tư trộn. Bấm «Tính toán» — Nhựa ĐM từ Kho hàng, TL nhựa từ
+                                    cân AI.
                                   </p>
                                 );
                               }
@@ -7608,13 +7608,13 @@ export default function ControlBoardBbMachineReportTable({
                                           <th className="px-3 py-2.5 font-semibold">Mã / Tên NVL</th>
                                           <th
                                             className="px-2 py-2.5 text-right font-semibold"
-                                            title="Tổng Nhựa ĐM cân tự động (theo Ngày·Ca) × tỉ lệ % NVL"
+                                            title="Tổng Nhựa ĐM Kho hàng (trong_luong_nhua × cuộn) × tỉ lệ % NVL"
                                           >
                                             Nhựa ĐM
                                           </th>
                                           <th
                                             className="px-2 py-2.5 text-right font-semibold"
-                                            title="Tổng TL nhựa cân tự động (theo Ngày·Ca) × tỉ lệ % NVL"
+                                            title="Tổng TL nhựa cân AI (theo Ngày·Ca) × tỉ lệ % NVL"
                                           >
                                             TL nhựa
                                           </th>

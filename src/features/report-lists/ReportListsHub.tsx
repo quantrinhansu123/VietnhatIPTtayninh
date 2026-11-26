@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
-import { Activity, ArrowLeftRight, ChevronLeft, ClipboardList, Loader2 } from 'lucide-react';
+import { Activity, ArrowLeftRight, ChevronLeft, ClipboardList, Loader2, Wallet } from 'lucide-react';
 import type { AuthUser } from '../../components/LoginPage';
 import type { AcceptanceReport, AcceptanceReportCreatePrefill } from '../../components/AcceptanceReportForm';
 import { DAMAGED_GOODS_SLIP_CONFIG } from '../../lib/weighingSlipConfig';
@@ -15,6 +15,7 @@ import {
 import ReportListsPrintActions from './ReportListsPrintActions';
 
 const ProductionOrdersPanel = lazy(() => import('../lenh-sx').then(m => ({ default: m.ProductionOrdersPanel })));
+const NhatKyCongViecPanel = lazy(() => import('../nhat-ky-cong-viec').then(m => ({ default: m.NhatKyCongViecPanel })));
 const MachineNvlReportListView = lazy(() => import('../../components/MachineNvlReportListView'));
 const MaterialRequestListView = lazy(() =>
   import('../yeu-cau-xuat-vat-tu/MaterialRequestListView').then(m => ({ default: m.MaterialRequestListView }))
@@ -32,20 +33,24 @@ const ShiftHandoverListView = lazy(() => import('../../components/ShiftHandoverL
 const ControlBoardPanel = lazy(() => import('../control-board').then(m => ({ default: m.ControlBoardPanel })));
 const MaterialConversionPanel = lazy(() => import('../quy-doi-vat-lieu'));
 const BaoCaoLechPanel = lazy(() => import('../bao-cao-lech').then(m => ({ default: m.BaoCaoLechPanel })));
+const BaoCaoCpPanel = lazy(() => import('../bao-cao-cp').then(m => ({ default: m.BaoCaoCpPanel })));
 
 export type ReportListsHubTabId =
   | (typeof REPORT_LIST_MENU_ITEMS)[number]['tab']
   | 'dashboard-auto'
   | 'material-conversion'
-  | 'bao-cao-lech';
+  | 'bao-cao-lech'
+  | 'bao-cao-cp'
+  | 'work-diary';
 type HubMenuItem = Omit<MenuCardConfig, 'tab'> & { tab: ReportListsHubTabId };
 
 function shortTabLabel(item: HubMenuItem) {
+  // Giữ nguyên nhãn «Báo cáo CP» / «Báo cáo» — không cắt hết thành trống hoặc chỉ «CP» khó đọc.
+  if (/^Báo cáo(\s+CP)?$/i.test(item.title.trim())) return item.title.trim();
   const stripped = item.title
     .replace(/^Danh sách\s+/i, '')
     .replace(/^Phiếu\s+/i, '')
     .replace(/^Báo cáo\s+/i, '');
-  // Giữ nguyên «Báo cáo» khi title đúng bằng hai chữ đó (không để nhãn tab trống).
   return stripped.trim() || item.title;
 }
 
@@ -126,14 +131,26 @@ export function ReportListsHub({
         } as MenuCardConfig
       ];
     }
-    if (withAuto.some(item => item.tab === 'bao-cao-lech')) return withAuto;
+    let withLech = withAuto;
+    if (!withAuto.some(item => item.tab === 'bao-cao-lech')) {
+      withLech = [
+        ...withAuto,
+        {
+          title: 'Báo cáo',
+          desc: 'Tổng hợp cột lệch (3.1) từ bản tính toán BB và ghi chú điểm bất thường.',
+          icon: ClipboardList,
+          tab: 'bao-cao-lech'
+        }
+      ];
+    }
+    if (withLech.some(item => item.tab === 'bao-cao-cp')) return withLech;
     return [
-      ...withAuto,
+      ...withLech,
       {
-        title: 'Báo cáo',
-        desc: 'Tổng hợp cột lệch (3.1) từ bản tính toán BB và ghi chú điểm bất thường.',
-        icon: ClipboardList,
-        tab: 'bao-cao-lech'
+        title: 'Báo cáo CP',
+        desc: 'Lỗ hàng lỗi hỏng và lỗ vận hành theo NVL (đơn giá × kg) từ bản tính toán BB.',
+        icon: Wallet,
+        tab: 'bao-cao-cp'
       }
     ];
   }, [menuItems]);
@@ -235,6 +252,8 @@ export function ReportListsHub({
       if (prev.has('can-tu-dong')) next.add('can-tu-dong');
       if (prev.has('material-conversion')) next.add('material-conversion');
       if (prev.has('bao-cao-lech')) next.add('bao-cao-lech');
+      if (prev.has('bao-cao-cp')) next.add('bao-cao-cp');
+      if (prev.has('work-diary')) next.add('work-diary');
       if (next.size === prev.size && [...next].every(item => prev.has(item))) return prev;
       return next;
     });
@@ -337,6 +356,10 @@ export function ReportListsHub({
               onBack={onBack}
               currentUser={currentUser}
             />
+          </KeepAliveSlot>
+
+          <KeepAliveSlot tabId="work-diary" activeTab={activeHubTab} mountedTabs={mountedTabs}>
+            <NhatKyCongViecPanel key={filtersKey} hideLocalFilters initialFilters={sharedInitialFilters} />
           </KeepAliveSlot>
 
           <KeepAliveSlot tabId="machine-nvl-report-list" activeTab={activeHubTab} mountedTabs={mountedTabs}>
@@ -474,6 +497,10 @@ export function ReportListsHub({
 
           <KeepAliveSlot tabId="bao-cao-lech" activeTab={activeHubTab} mountedTabs={mountedTabs}>
             <BaoCaoLechPanel key={filtersKey} filters={appliedFilters} />
+          </KeepAliveSlot>
+
+          <KeepAliveSlot tabId="bao-cao-cp" activeTab={activeHubTab} mountedTabs={mountedTabs}>
+            <BaoCaoCpPanel key={filtersKey} filters={appliedFilters} />
           </KeepAliveSlot>
         </div>
       </div>

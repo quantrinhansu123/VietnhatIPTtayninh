@@ -28,6 +28,8 @@ Liên kết LSX ưu tiên ngày `lenh_sx.ngay`, lấy từng sản phẩm từ `
 
 Route alias: `/bao-cao-nghiem-thu` → tab `acceptance-report`
 
+**Prefill tạo mới** (`AcceptanceReportCreatePrefill`): `ngay`, `ca`, tùy chọn `ma_may` / `ten_may`. Từ `/ke-hoach-san-xuat` nút **Nghiệm thu** trên dòng lệnh mở form đã điền ngày·ca·máy.
+
 Tab **Báo cáo sản lượng** trên `/phan-tich` lấy phiếu này theo **ngày + ca + máy** (`buildBbSanLuongGroups`, lọc `loai_vat_tu = Thành phẩm`; mã SP thuộc **Kho thành phẩm** hoặc **chưa gán kho** — loại kho hàng hỏng/rác).
 Cột **SL TP / Nhập thành phẩm** trên tiêu hao NVL lấy từ các phiếu này (`/danh-sach-bao-cao-san-luong`) theo **mã SP thực tế trên phiếu sản lượng** (ngày·ca·máy) — không giới hạn danh sách SP trên LSX; không lấy phiếu xuất kho.
 Trên `/phan-tich-tu-dong`:

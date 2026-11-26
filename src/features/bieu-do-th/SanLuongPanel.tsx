@@ -26,6 +26,7 @@ import {
   PIE_COLORS
 } from './chartUi';
 import { comparisonRows, summarize } from './comparisonData';
+import { staffChartLabels } from './staffEnrichment';
 import TongHopTreeTable from './TongHopTreeTable';
 
 function sumField(rows: BaoCaoTongHopListRow[], field: keyof BaoCaoTongHopListRow) {
@@ -64,7 +65,10 @@ export default function SanLuongPanel({
   const selected = clean.filter(r => machine === 'all' || r.may === machine);
   const byMachine = summarize(selected, r => r.may);
   const byDay = summarize(selected, r => r.ngay_tu);
-  const byStaff = summarize(selected, r => String(r.cong_nhan_phu_trach || '').trim() || 'Chưa gán');
+  const byStaff = summarize(
+    selected.filter(r => staffChartLabels(r.cong_nhan_phu_trach).length > 0),
+    r => staffChartLabels(r.cong_nhan_phu_trach).join(', ')
+  );
   const total = summarize(selected, () => 'Tổng')[0];
   const slSanLuong = sumField(selected, 'sl_san_luong');
   const slYeuCau = sumField(selected, 'sl_yeu_cau');

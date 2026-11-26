@@ -3611,7 +3611,43 @@ type ProductNplPhanTramItem = {
   so_luong: number | null;
   don_vi: string | null;
   khoi_luong_kg: number | null;
+  /** Vật tư thay thế: `so_luong` cái vật tư này = `so_luong_tp` đơn vị thành phần (vd ONG30 ×2 = ONG60 ×1). */
+  thay_the?: ProductNplThayThe[];
 };
+
+type ProductNplThayThe = {
+  ma: string;
+  ten: string;
+  don_vi: string | null;
+  so_luong: number;
+  so_luong_tp: number;
+};
+
+function parseNplThayThe(record: Record<string, unknown>): ProductNplThayThe[] | undefined {
+  const raw = record.thay_the ?? record.substitutes;
+  if (!Array.isArray(raw)) return undefined;
+  const out: ProductNplThayThe[] = [];
+  const seen = new Set<string>();
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') continue;
+    const r = entry as Record<string, unknown>;
+    const ma = String(r.ma ?? r.code ?? '').trim();
+    const sl = parseServerNumber(r.so_luong ?? r.quantity);
+    const slTp = parseServerNumber(r.so_luong_tp ?? r.componentQuantity ?? 1);
+    if (!ma || !(sl > 0) || !(slTp > 0)) continue;
+    const key = ma.toUpperCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      ma,
+      ten: String(r.ten ?? r.name ?? '').trim(),
+      don_vi: String(r.don_vi ?? r.unit ?? '').trim() || null,
+      so_luong: sl,
+      so_luong_tp: slTp
+    });
+  }
+  return out;
+}
 
 function parseServerNumber(value: unknown): number {
   if (value === null || value === undefined || value === '') return NaN;
@@ -3710,7 +3746,8 @@ function parseProductNplPhanTramInput(raw: unknown): { error: string } | { items
         phan_tram: companionPercent,
         so_luong: quantity,
         don_vi: donVi,
-        khoi_luong_kg: weightKg
+        khoi_luong_kg: weightKg,
+        ...(parseNplThayThe(record) ? { thay_the: parseNplThayThe(record) } : {})
       });
       continue;
     }
@@ -3727,7 +3764,8 @@ function parseProductNplPhanTramInput(raw: unknown): { error: string } | { items
       phan_tram: percent,
       so_luong: null,
       don_vi: donVi || '%',
-      khoi_luong_kg: weightKg
+      khoi_luong_kg: weightKg,
+      ...(parseNplThayThe(record) ? { thay_the: parseNplThayThe(record) } : {})
     });
   }
 
@@ -12176,7 +12214,41 @@ export function createApp() {
         return res.status(500).json({ error: productionPlanWriteErrorMessage(error) });
       }
 
-      return res.json({ plans: data || [] });
+      const plans = (data || []) as Record<string, unknown>[];
+      const withLinesFlag = String(req.query.with_lines ?? req.query.withLines ?? '').trim();
+      const wantLines = withLinesFlag === '1' || withLinesFlag.toLowerCase() === 'true';
+      if (!wantLines || plans.length === 0) {
+        return res.json({ plans });
+      }
+
+      // Gom dòng kế hoạch 1 query (KHCV / bảng máy) — tránh N+1 GET ?id=…
+      const planIds = plans
+        .map(plan => String(plan.id ?? '').trim())
+        .filter(Boolean);
+      const { data: lineRows, error: linesError } = await supabase
+        .from(SUPABASE_PRODUCTION_PLAN_LINES_TABLE)
+        .select('*')
+        .in('ke_hoach_id', planIds)
+        .order('thu_tu_uu_tien', { ascending: true });
+      if (linesError) {
+        console.error('Supabase ke_hoach_san_xuat_dong batch error:', linesError);
+        return res.status(500).json({ error: productionPlanWriteErrorMessage(linesError) });
+      }
+
+      const linesByPlanId: Record<string, Record<string, unknown>[]> = {};
+      for (const raw of (lineRows || []) as Record<string, unknown>[]) {
+        const planId = String(raw.ke_hoach_id ?? '').trim();
+        if (!planId) continue;
+        if (!linesByPlanId[planId]) linesByPlanId[planId] = [];
+        linesByPlanId[planId].push(raw);
+      }
+
+      return res.json({
+        plans: plans.map(plan => ({
+          ...plan,
+          lines: linesByPlanId[String(plan.id ?? '').trim()] || []
+        }))
+      });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Lỗi khi tải kế hoạch sản xuất.' });
     }
@@ -14584,8 +14656,33 @@ export function createApp() {
           if (exported) alreadyExportedCodes.push(item.fullCode);
           return !exported;
         });
-        // Tạm bỏ: không bắt buộc mã QR đã có trong nhap_kho khi xuất TP.
-        // (notImportedCodes vẫn trả [] để UI cũ không lỗi.)
+        // Xuất TP: chặn mã tem QR (có hậu tố `_`/`+`) chưa có dòng trong nhap_kho — tránh xuất âm tồn.
+        // Mã không có hậu tố (thêm tay từ lệnh xuất, không quét QR) không bị chặn.
+        const serialItems = pendingItems.filter(item => /[_+]/.test(item.fullCode.slice(1)));
+        if (serialItems.length) {
+          const importedKeys = new Set<string>();
+          for (let offset = 0; offset < serialItems.length; offset += 100) {
+            const batch = serialItems.slice(offset, offset + 100);
+            const { data: importedRows, error: importedError } = await khoDb
+              .from('nhap_kho')
+              .select('ma_sp_quet')
+              .in('ma_sp_quet', batch.map(item => item.fullCode));
+            if (importedError) {
+              return res.status(500).json({ error: importedError.message || 'Không kiểm tra được mã đã nhập kho.' });
+            }
+            for (const row of importedRows || []) {
+              const key = String(row.ma_sp_quet ?? '').trim().replace(/\s+/g, '').toUpperCase();
+              if (key) importedKeys.add(key);
+            }
+          }
+          const serialSet = new Set(serialItems.map(item => item.fullCode));
+          pendingItems = pendingItems.filter(item => {
+            if (!serialSet.has(item.fullCode)) return true;
+            const imported = importedKeys.has(item.fullCode.replace(/\s+/g, '').toUpperCase());
+            if (!imported) notImportedCodes.push(item.fullCode);
+            return imported;
+          });
+        }
       }
       let header: any = null;
 
@@ -14788,6 +14885,24 @@ export function createApp() {
       const maSpTon = Number.isFinite(separatorIdx) ? maSpFull.slice(0, separatorIdx).trim() : maSpFull;
       const headerTable = loaiPhieu === 'nhap' ? 'phieu_nhap' : 'phieu_xuat';
       const lineTable = loaiPhieu === 'nhap' ? 'nhap_kho' : 'xuat_kho';
+
+      // Xuất TP quét tem QR: mã phải đã có dòng trong nhap_kho (tránh xuất âm tồn).
+      if (loaiPhieu === 'xuat' && (loai === 'san_pham' || !loai) && /[_+]/.test(maSpFull.slice(1))) {
+        const { data: importedLine, error: importedError } = await supabaseKho
+          .from('nhap_kho')
+          .select('id')
+          .eq('ma_sp_quet', maSpFull)
+          .limit(1)
+          .maybeSingle();
+        if (importedError) return res.status(500).json({ error: importedError.message || 'Không kiểm tra được mã đã nhập kho.' });
+        if (!importedLine) {
+          return res.status(409).json({
+            notImported: true,
+            notImportedCodes: [maSpFull],
+            error: `Mã QR ${maSpFull} chưa được nhập kho. Hãy lập phiếu nhập kho trước khi xuất.`
+          });
+        }
+      }
 
       if (detailOnly) {
         const { data: existingHeader, error: headerCheckError } = await supabaseKho
@@ -22686,6 +22801,18 @@ export function createApp() {
     }
     try {
       const ngay = typeof req.query.ngay === 'string' ? req.query.ngay.trim() : '';
+      const from =
+        typeof req.query.from === 'string'
+          ? req.query.from.trim()
+          : typeof req.query.dateFrom === 'string'
+            ? req.query.dateFrom.trim()
+            : '';
+      const to =
+        typeof req.query.to === 'string'
+          ? req.query.to.trim()
+          : typeof req.query.dateTo === 'string'
+            ? req.query.dateTo.trim()
+            : '';
       const ca = typeof req.query.ca === 'string' ? req.query.ca.trim() : '';
       const limitRaw = typeof req.query.limit === 'string' ? Number(req.query.limit) : 500;
       const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 2000) : 500;
@@ -22697,7 +22824,12 @@ export function createApp() {
         .order('ca', { ascending: true, nullsFirst: false })
         .order('id', { ascending: true })
         .limit(limit);
-      if (ngay) query = query.eq('ngay', ngay);
+      if (ngay) {
+        query = query.eq('ngay', ngay);
+      } else {
+        if (from) query = query.gte('ngay', from);
+        if (to) query = query.lte('ngay', to);
+      }
       if (ca) query = query.eq('ca', ca);
 
       const { data, error } = await query;

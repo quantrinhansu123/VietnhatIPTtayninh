@@ -236,7 +236,7 @@ export default function BbCanTuDongTongHopPanel({
               >
                 <div>Trọng lượng Nhựa ĐM</div>
                 <div className="mt-0.5 text-[11px] font-semibold normal-case tracking-normal text-zinc-600">
-                  SP − lõi − bì (Cân AI)
+                  trong_luong_nhua × cuộn (Kho hàng)
                 </div>
               </th>
               <th

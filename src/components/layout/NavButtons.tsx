@@ -71,6 +71,7 @@ export const BACK_TAB_MAP: Record<string, string> = {
   'quan-tri': 'menu',
   'acceptance-report-list': 'factory-qc',
   'report-lists': 'factory-cong-nhan',
+  'work-diary': 'report-lists',
   'report-forms': 'factory-cong-nhan',
   'production-reports': 'factory-quan-doc',
   'facility-management': 'factory-kho',

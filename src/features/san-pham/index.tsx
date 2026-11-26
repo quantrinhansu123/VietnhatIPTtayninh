@@ -25,7 +25,7 @@ import {
 } from '../../components/shared/table';
 import { Loader2, Save, FlaskConical, Download, Upload, Plus, Eye, Pencil, Trash2, QrCode, X, Warehouse, ClipboardList, RefreshCw, Calculator } from 'lucide-react';
 import { productFieldClass } from './productFieldClass';
-import type { ProductRow, ProductNplItem, MaterialOption, ProductNplAmountType } from './types';
+import type { ProductRow, ProductNplItem, ProductNplSubstitute, MaterialOption, ProductNplAmountType } from './types';
 import { downloadBulkProductNplComponentsTemplate, downloadProductNplComponentsTemplate, parseThanhPhanLongFormatExcel, parseBulkProductNplComponentsExcel, parseImportSpExcelRows } from '../../utils/productNplComponentsExcel';
 import type { ImportSpExcelRow } from '../../utils/productNplComponentsExcel';
 import { parseProductNplItems, productNplItemsToJson, formatProductNplSummary, findMaterialOptionByCode, formatProductNplAmount, roundNplNumber, formatNplDecimal, formatNplWeightKg, bulkExcelRowsToProductMap } from './types';
@@ -202,6 +202,15 @@ export function ProductNplItemFormModal({
   });
   const [unit, setUnit] = useState(initialItem?.unit && initialItem.unit !== '-' ? initialItem.unit : '');
   const [formError, setFormError] = useState('');
+  type SubstituteDraft = { key: string; code: string; quantity: string; componentQuantity: string };
+  const [substituteDrafts, setSubstituteDrafts] = useState<SubstituteDraft[]>(() =>
+    (initialItem?.substitutes ?? []).map((sub, index) => ({
+      key: `init-${index}`,
+      code: sub.code,
+      quantity: formatNplDecimal(sub.quantity),
+      componentQuantity: formatNplDecimal(sub.componentQuantity)
+    }))
+  );
 
   const pickMaterial = (nextCode: string) => {
     setCode(nextCode);
@@ -248,7 +257,36 @@ export function ProductNplItemFormModal({
       return;
     }
 
+    const substitutes: ProductNplSubstitute[] = [];
+    for (const row of substituteDrafts) {
+      const subCode = row.code.trim();
+      if (!subCode) continue;
+      const quantity = parsePercentInput(row.quantity);
+      const componentQuantity = parsePercentInput(row.componentQuantity);
+      if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(componentQuantity) || componentQuantity <= 0) {
+        setFormError(`Vật tư thay thế ${subCode}: số lượng phải > 0.`);
+        return;
+      }
+      if (normalizeProductCodeKey(subCode) === normalizeProductCodeKey(trimmedCode)) {
+        setFormError('Vật tư thay thế không được trùng chính thành phần.');
+        return;
+      }
+      if (substitutes.some(sub => normalizeProductCodeKey(sub.code) === normalizeProductCodeKey(subCode))) {
+        setFormError(`Vật tư thay thế ${subCode} bị trùng.`);
+        return;
+      }
+      const subMaterial = findMaterialOptionByCode(materialOptions, subCode);
+      substitutes.push({
+        code: subMaterial?.code || subCode,
+        name: subMaterial?.name || '',
+        unit: subMaterial?.unit && subMaterial.unit !== '-' ? subMaterial.unit : '',
+        quantity,
+        componentQuantity
+      });
+    }
+
     const draft: ProductNplItem = {
+      substitutes,
       code: trimmedCode,
       name: name.trim() || material?.name || '',
       amountType,
@@ -381,6 +419,75 @@ export function ProductNplItemFormModal({
               </label>
             </div>
           )}
+          <div className="space-y-2 rounded-lg border border-zinc-200 bg-zinc-50 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-black uppercase tracking-wider text-zinc-500">Vật tư thay thế</span>
+              <button
+                type="button"
+                onClick={() =>
+                  setSubstituteDrafts(rows => [
+                    ...rows,
+                    { key: `new-${Date.now()}-${rows.length}`, code: '', quantity: '1', componentQuantity: '1' }
+                  ])
+                }
+                className="rounded-md border border-zinc-300 bg-white px-2 py-1 text-[11px] font-bold text-zinc-700 hover:border-zinc-500"
+              >
+                + Thêm thay thế
+              </button>
+            </div>
+            {substituteDrafts.length === 0 ? (
+              <p className="text-[11px] text-zinc-500">
+                Chưa có. VD thành phần ONG-60CM: thêm ONG-30CM, SL 2 = 1 thành phần (ONG30 ×2 = ONG60 ×1).
+              </p>
+            ) : (
+              substituteDrafts.map(row => (
+                <div key={row.key} className="grid grid-cols-[minmax(0,1fr)_4rem_auto_4rem_auto] items-center gap-1.5">
+                  <SearchableSelect
+                    value={row.code}
+                    onChange={next =>
+                      setSubstituteDrafts(rows => rows.map(r => (r.key === row.key ? { ...r, code: next } : r)))
+                    }
+                    options={materialOptions}
+                    placeholder="Mã thay thế"
+                    preferValueMatch
+                    isLoading={isLoadingMaterials}
+                    inputClassName={productFieldClass}
+                    getLabel={item => `${(item as MaterialOption).code} · ${(item as MaterialOption).name}`}
+                    getValue={item => (item as MaterialOption).code}
+                  />
+                  <input
+                    inputMode="decimal"
+                    value={row.quantity}
+                    onChange={e => {
+                      const v = e.target.value;
+                      setSubstituteDrafts(rows => rows.map(r => (r.key === row.key ? { ...r, quantity: v } : r)));
+                    }}
+                    className={productFieldClass}
+                    title="Số lượng vật tư thay thế"
+                  />
+                  <span className="text-xs font-bold text-zinc-500">=</span>
+                  <input
+                    inputMode="decimal"
+                    value={row.componentQuantity}
+                    onChange={e => {
+                      const v = e.target.value;
+                      setSubstituteDrafts(rows => rows.map(r => (r.key === row.key ? { ...r, componentQuantity: v } : r)));
+                    }}
+                    className={productFieldClass}
+                    title="Tương đương bao nhiêu đơn vị thành phần"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setSubstituteDrafts(rows => rows.filter(r => r.key !== row.key))}
+                    className="h-9 rounded-md px-2 text-xs font-bold text-red-600 hover:bg-red-50"
+                    title="Xóa vật tư thay thế"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
           <p className="text-[11px] font-medium leading-relaxed text-zinc-500">
             Cùng mã NPL nhưng khác đơn vị (vd Cái rồi kg) sẽ gộp thành một thành phần có cả hai loại.
           </p>

@@ -23,6 +23,7 @@ import {
   type ProductionPlanRelatedReports
 } from './relatedReportsPrint';
 import PhanCongCvPanel from './PhanCongCvPanel';
+import type { AcceptanceReportCreatePrefill } from '../../components/AcceptanceReportForm';
 import {
   buildProductionPlanBoard,
   toBoardLines,
@@ -819,16 +820,6 @@ export function lookupInventoryTotalKg(code: string, inventoryTotalKgByCode: Map
   return inventoryTotalKgByCode.get(normalizeProductCodeKey(code)) ?? null;
 }
 
-export function suggestProductionPlanPackageQuantity(totalNorm: number, totalKg: number | null) {
-  if (totalKg === null || totalKg <= 0 || !Number.isFinite(totalNorm) || totalNorm <= 0) return '';
-  return String(roundNplNumber(totalNorm / totalKg));
-}
-
-export function calcProductionPlanExpectedWeight(packageQuantity: number, totalKg: number | null) {
-  if (totalKg === null || totalKg <= 0 || !Number.isFinite(packageQuantity) || packageQuantity < 0) return '';
-  return String(roundNplNumber(packageQuantity * totalKg));
-}
-
 export function resolveProductionPlanLineForMaterialKey(
   scopedLines: ProductionPlanLine[],
   materialKey: string
@@ -1008,7 +999,6 @@ export function ProductionPlanMaterialAccountingModal({
     () => buildInventoryTotalKgMap(inventoryMaterials),
     [inventoryMaterials]
   );
-  const [packageQuantities, setPackageQuantities] = useState<Record<string, string>>({});
   const [expectedExportWeights, setExpectedExportWeights] = useState<Record<string, string>>({});
   const totalOrderCount = lines.length;
   const totalMaterialCount = useMemo(
@@ -1025,15 +1015,13 @@ export function ProductionPlanMaterialAccountingModal({
     (accountingShiftGroups.find(group => group.shift === shift)?.lines ?? [])
       .map(material => {
         const key = productionPlanAccountingKey(shift, material);
-        const packageQty = parsePercentInput(packageQuantities[key] ?? '');
         const totalKg = lookupInventoryTotalKg(material.code, inventoryTotalKgByCode);
         const manualExpected = expectedExportWeights[key];
-        const actualQuantity =
-          manualExpected !== undefined && manualExpected.trim() !== ''
-            ? parsePercentInput(manualExpected)
-            : parsePercentInput(calcProductionPlanExpectedWeight(packageQty, totalKg));
-        const autoSuggested = parsePercentInput(calcProductionPlanExpectedWeight(packageQty, totalKg));
-        const suggestedQuantity =
+        const autoSuggested =
+          totalKg !== null && totalKg > 0 && Number.isFinite(material.totalQuantity) && material.totalQuantity > 0
+            ? material.totalQuantity
+            : NaN;
+        const quantity =
           manualExpected !== undefined && manualExpected.trim() !== ''
             ? parsePercentInput(manualExpected)
             : autoSuggested;
@@ -1042,8 +1030,8 @@ export function ProductionPlanMaterialAccountingModal({
           name: material.name,
           unit: material.unit && material.unit !== '-' ? material.unit : '',
           quotaQuantity: material.totalQuantity,
-          suggestedQuantity: Number.isFinite(suggestedQuantity) ? suggestedQuantity : 0,
-          actualQuantity
+          suggestedQuantity: Number.isFinite(quantity) ? quantity : 0,
+          actualQuantity: Number.isFinite(quantity) ? quantity : 0
         };
       })
       .filter(line => Number.isFinite(line.actualQuantity) && line.actualQuantity > 0);
@@ -1066,38 +1054,22 @@ export function ProductionPlanMaterialAccountingModal({
     });
 
     return [...merged.values()].sort((a, b) => a.code.localeCompare(b.code, 'vi'));
-  }, [accountingShiftGroups, packageQuantities, expectedExportWeights, inventoryTotalKgByCode]);
+  }, [accountingShiftGroups, expectedExportWeights, inventoryTotalKgByCode]);
 
   useEffect(() => {
     if (!open || accountingShiftGroups.length === 0) return;
 
-    const suggestedPackages: Record<string, string> = {};
     const suggestedExpected: Record<string, string> = {};
 
     accountingShiftGroups.forEach(group => {
       group.lines.forEach(material => {
         const key = productionPlanAccountingKey(group.shift, material);
         const totalKg = lookupInventoryTotalKg(material.code, inventoryTotalKgByCode);
-        const suggestedPackage = suggestProductionPlanPackageQuantity(material.totalQuantity, totalKg);
-
-        if (suggestedPackage) {
-          suggestedPackages[key] = suggestedPackage;
-          const expected = calcProductionPlanExpectedWeight(parsePercentInput(suggestedPackage), totalKg);
-          if (expected) suggestedExpected[key] = expected;
+        // Khối lượng xuất dự kiến = tổng định mức khi có Tổng kg trong kho NVL.
+        if (totalKg !== null && totalKg > 0 && Number.isFinite(material.totalQuantity) && material.totalQuantity > 0) {
+          suggestedExpected[key] = String(roundNplNumber(material.totalQuantity));
         }
       });
-    });
-
-    setPackageQuantities(prev => {
-      const next = { ...prev };
-      let changed = false;
-      Object.entries(suggestedPackages).forEach(([key, value]) => {
-        if (next[key] === undefined) {
-          next[key] = value;
-          changed = true;
-        }
-      });
-      return changed ? next : prev;
     });
 
     setExpectedExportWeights(prev => {
@@ -1112,25 +1084,6 @@ export function ProductionPlanMaterialAccountingModal({
       return changed ? next : prev;
     });
   }, [open, accountingShiftGroups, inventoryTotalKgByCode]);
-
-  const handlePackageQuantityChange = (
-    shift: string,
-    material: ProductionPlanMaterialAccountingLine,
-    value: string
-  ) => {
-    const key = productionPlanAccountingKey(shift, material);
-    const totalKg = lookupInventoryTotalKg(material.code, inventoryTotalKgByCode);
-    const expected = calcProductionPlanExpectedWeight(parsePercentInput(value), totalKg);
-
-    setPackageQuantities(prev => ({
-      ...prev,
-      [key]: value
-    }));
-    setExpectedExportWeights(prev => ({
-      ...prev,
-      [key]: expected
-    }));
-  };
 
   const handleExpectedExportWeightChange = (
     shift: string,
@@ -1232,13 +1185,12 @@ export function ProductionPlanMaterialAccountingModal({
                       <div className="overflow-x-auto">
                         <table className="w-full table-fixed text-left text-xs">
                           <colgroup>
-                            <col className="w-[5%]" />
-                            <col className="w-[10%]" />
-                            <col className="w-[32%]" />
+                            <col className="w-[6%]" />
+                            <col className="w-[12%]" />
+                            <col className="w-[38%]" />
                             <col className="w-[8%]" />
-                            <col className="w-[15%]" />
-                            <col className="w-[15%]" />
-                            <col className="w-[15%]" />
+                            <col className="w-[18%]" />
+                            <col className="w-[18%]" />
                           </colgroup>
                           <thead className="bg-[#e8f0ed] text-[10px] font-semibold tracking-wide text-zinc-700">
                             <tr>
@@ -1247,7 +1199,6 @@ export function ProductionPlanMaterialAccountingModal({
                               <th className="px-2 py-1.5 font-black">Tên NVL</th>
                               <th className="px-2 py-1.5 font-black">ĐVT</th>
                               <th className="px-2 py-1.5 text-right font-black">Tổng định mức</th>
-                              <th className="px-2 py-1.5 text-center font-black leading-tight">Số lượng xuất kiện</th>
                               <th className="px-2 py-1.5 text-right font-black leading-tight">Khối lượng xuất dự kiến</th>
                             </tr>
                           </thead>
@@ -1255,10 +1206,7 @@ export function ProductionPlanMaterialAccountingModal({
                             {group.lines.map((material, index) => {
                               const totalKg = lookupInventoryTotalKg(material.code, inventoryTotalKgByCode);
                               const accountingKey = productionPlanAccountingKey(group.shift, material);
-                              const packageQty = parsePercentInput(packageQuantities[accountingKey] ?? '');
-                              const autoExpectedExportWeight = calcProductionPlanExpectedWeight(packageQty, totalKg);
-                              const expectedExportDisplay =
-                                expectedExportWeights[accountingKey] ?? autoExpectedExportWeight;
+                              const expectedExportDisplay = expectedExportWeights[accountingKey] ?? '';
 
                               return (
                               <tr key={`${group.shift}-${material.code}-${material.unit}`} className="leading-tight">
@@ -1277,30 +1225,13 @@ export function ProductionPlanMaterialAccountingModal({
                                   <input
                                     type="text"
                                     inputMode="decimal"
-                                    value={packageQuantities[accountingKey] ?? ''}
-                                    onChange={event =>
-                                      handlePackageQuantityChange(group.shift, material, event.target.value)
-                                    }
-                                    title={
-                                      totalKg
-                                        ? `Tổng định mức ÷ ${formatNumber(totalKg, 2)} kg`
-                                        : 'Chưa tìm thấy Tổng kg trong Kho NVL'
-                                    }
-                                    className="h-7 w-full min-w-0 rounded-md border border-emerald-200 bg-emerald-50 px-2 text-center text-[11px] font-black text-emerald-900 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
-                                    placeholder={totalKg ? 'Kiện' : '-'}
-                                  />
-                                </td>
-                                <td className="px-2 py-1.5">
-                                  <input
-                                    type="text"
-                                    inputMode="decimal"
                                     value={expectedExportDisplay}
                                     onChange={event =>
                                       handleExpectedExportWeightChange(group.shift, material, event.target.value)
                                     }
                                     title={
-                                      totalKg && autoExpectedExportWeight
-                                        ? `Tự tính: Số kiện × ${formatNumber(totalKg, 2)} kg`
+                                      totalKg
+                                        ? 'Mặc định = tổng định mức; có thể nhập tay'
                                         : 'Có thể nhập tay khối lượng xuất dự kiến'
                                     }
                                     className="h-7 w-full min-w-0 rounded-md border border-sky-200 bg-sky-50 px-2 text-right text-[11px] font-black text-sky-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
@@ -1818,6 +1749,8 @@ export type ProductionPlanHistoryLine = {
   assistantStaff: string;
   traineeStaff: string;
   products: OrderProductLine[];
+  /** Ngày kế hoạch (khi gom nhiều ngày cho bảng KHCV). */
+  planDate?: string;
 };
 
 export function normalizeProductionPlanHistory(data: unknown): ProductionPlanHistorySummary[] {
@@ -1897,7 +1830,13 @@ export function formatProductionPlanHistoryProducts(products: OrderProductLine[]
   return codes.length > 0 ? codes.join(', ') : '-';
 }
 
-export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
+export function ProductionPlanHistoryPanel({
+  onBack,
+  onOpenAcceptanceReport
+}: {
+  onBack: () => void;
+  onOpenAcceptanceReport?: (prefill: AcceptanceReportCreatePrefill) => void;
+}) {
   const { canCreate, canEdit, canDelete } = useTabAccess('production-plan-history');
   const [filterDate, setFilterDate] = useState('');
   const [fromDate, setFromDate] = useState('');
@@ -1906,6 +1845,7 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
   const [selectedPlanId, setSelectedPlanId] = useState('');
   const [selectedLines, setSelectedLines] = useState<ProductionPlanHistoryLine[]>([]);
   const [selectedPrintLineIds, setSelectedPrintLineIds] = useState<string[]>([]);
+  const [includeBoardOnPrint, setIncludeBoardOnPrint] = useState(false);
   const [historyPrintLines, setHistoryPrintLines] = useState<ProductionPlanLine[]>([]);
   const [historyPrintMaterials, setHistoryPrintMaterials] = useState<Record<string, ProductionOrderMaterialLine[]>>({});
   const [isPrintingSelected, setIsPrintingSelected] = useState(false);
@@ -1919,7 +1859,9 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
   const [editingPlan, setEditingPlan] = useState<ProductionPlanHistorySummary | null>(null);
   const [editLines, setEditLines] = useState<ProductionPlanLine[]>([]);
   const [deletingPlanId, setDeletingPlanId] = useState('');
-  const [boardLines, setBoardLines] = useState<ProductionPlanBoardLine[]>([]);
+  const [phanCongAddTick, setPhanCongAddTick] = useState(0);
+  const [boardSourceLines, setBoardSourceLines] = useState<ProductionPlanHistoryLine[]>([]);
+  const [selectedBoardLineIds, setSelectedBoardLineIds] = useState<string[]>([]);
   const [boardProducts, setBoardProducts] = useState<ProductRow[]>([]);
   const [boardExtraMachines, setBoardExtraMachines] = useState<string[]>([]);
   const [boardBlankRows, setBoardBlankRows] = useState(3);
@@ -1928,6 +1870,12 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
   const [isPrintingBoard, setIsPrintingBoard] = useState(false);
   const [boardPrintActive, setBoardPrintActive] = useState(false);
   const [boardPrintDate, setBoardPrintDate] = useState('');
+  const [companionBoardPrintActive, setCompanionBoardPrintActive] = useState(false);
+  const [companionBoardLines, setCompanionBoardLines] = useState<ProductionPlanBoardLine[]>([]);
+  const [companionBoardPrintDate, setCompanionBoardPrintDate] = useState('');
+  const [pendingCompanionBoardAfterHistory, setPendingCompanionBoardAfterHistory] = useState(false);
+  const boardProductsRef = useRef<ProductRow[] | null>(null);
+  const boardLoadSeqRef = useRef(0);
 
   const loadPlans = async (options?: { ngay?: string; tuNgay?: string; denNgay?: string }) => {
     setIsLoading(true);
@@ -1986,60 +1934,135 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
     }
   };
 
-  useEffect(() => {
-    void loadPlans();
-  }, []);
-
   const selectedPlan = plans.find(plan => plan.id === selectedPlanId) ?? null;
 
-  const loadBoard = async (date: string) => {
+  const boardFilterLabel = useMemo(() => {
+    if (filterDate) return filterDate;
+    if (fromDate || toDate) {
+      const from = fromDate || '…';
+      const to = toDate || '…';
+      return from === to ? from : `${from} → ${to}`;
+    }
+    return todayDateInputValue();
+  }, [filterDate, fromDate, toDate]);
+
+  const loadBoard = async (options?: { ngay?: string; tuNgay?: string; denNgay?: string }) => {
+    const seq = ++boardLoadSeqRef.current;
     setIsLoadingBoard(true);
     setBoardError('');
     try {
-      const params = new URLSearchParams({ ngay: date, limit: '200' });
+      const params = new URLSearchParams({ limit: '200', with_lines: '1' });
+      if (options?.ngay) {
+        params.set('ngay', options.ngay);
+      } else {
+        if (options?.tuNgay) params.set('tu_ngay', options.tuNgay);
+        if (options?.denNgay) params.set('den_ngay', options.denNgay);
+      }
+
+      const productPromise =
+        boardProductsRef.current && boardProductsRef.current.length > 0
+          ? Promise.resolve(null as Response | null)
+          : fetch('/api/san-pham?format=table');
+
       const [planRes, productRes] = await Promise.all([
         fetch(`/api/ke-hoach-sx?${params.toString()}`),
-        fetch('/api/san-pham?format=table')
+        productPromise
       ]);
-      const [planData, productData] = await Promise.all([
-        planRes.json().catch(() => ({})),
-        productRes.json().catch(() => ({}))
-      ]);
-      if (!planRes.ok) throw new Error(planData.error || 'Không thể tải kế hoạch SX theo ngày.');
-      const summaries = normalizeProductionPlanHistory(planData);
+      if (seq !== boardLoadSeqRef.current) return;
 
-      const detailPayloads = await Promise.all(
-        summaries.map(plan =>
-          fetch(`/api/ke-hoach-sx?id=${encodeURIComponent(plan.id)}`)
-            .then(res => res.json().catch(() => ({})))
-            .catch(() => ({}))
-        )
-      );
+      const planData = await planRes.json().catch(() => ({}));
+      if (!planRes.ok) throw new Error(planData.error || 'Không thể tải kế hoạch SX theo ngày.');
+
+      const rawPlans = Array.isArray((planData as { plans?: unknown }).plans)
+        ? ((planData as { plans: unknown[] }).plans)
+        : [];
       const merged: ProductionPlanHistoryLine[] = [];
-      detailPayloads.forEach(payload => {
-        const lines = Array.isArray(payload?.lines) ? normalizeProductionPlanHistoryLines(payload) : [];
-        merged.push(...lines);
+      const seen = new Set<string>();
+      rawPlans.forEach(raw => {
+        if (!raw || typeof raw !== 'object') return;
+        const record = raw as Record<string, unknown>;
+        const planId = String(record.id ?? '').trim();
+        const planDate =
+          parseProductionOrderFilterDate(String(record.ngay_ke_hoach ?? record.planDate ?? '')) ||
+          formatCell(record.ngay_ke_hoach ?? record.planDate);
+        const lines = normalizeProductionPlanHistoryLines({ lines: record.lines });
+        lines.forEach(line => {
+          const key = line.id || `${planId}-${line.orderCode}-${line.shift}-${line.machine}`;
+          if (seen.has(key)) return;
+          seen.add(key);
+          merged.push({ ...line, id: key, planDate });
+        });
       });
 
-      setBoardProducts(productRes.ok ? normalizeProducts(productData) : []);
-      setBoardLines(toBoardLines(merged));
+      if (productRes) {
+        const productData = await productRes.json().catch(() => ({}));
+        if (productRes.ok) {
+          const products = normalizeProducts(productData);
+          boardProductsRef.current = products;
+          setBoardProducts(products);
+        }
+      } else if (boardProductsRef.current) {
+        setBoardProducts(boardProductsRef.current);
+      }
+
+      if (seq !== boardLoadSeqRef.current) return;
+      setBoardSourceLines(merged);
+      setSelectedBoardLineIds(merged.map(line => line.id));
     } catch (error: any) {
-      setBoardLines([]);
+      if (seq !== boardLoadSeqRef.current) return;
+      setBoardSourceLines([]);
+      setSelectedBoardLineIds([]);
       setBoardError(error.message || 'Không thể tải bảng kế hoạch SX theo ngày.');
     } finally {
-      setIsLoadingBoard(false);
+      if (seq === boardLoadSeqRef.current) setIsLoadingBoard(false);
     }
   };
 
+  const boardLines = useMemo(
+    () =>
+      toBoardLines(
+        boardSourceLines.filter(line => selectedBoardLineIds.includes(line.id))
+      ),
+    [boardSourceLines, selectedBoardLineIds]
+  );
+
   const board = useMemo(
-    () => buildProductionPlanBoard({ lines: boardLines, products: boardProducts, extraMachines: boardExtraMachines, blankRowsPerShift: boardBlankRows }),
+    () =>
+      buildProductionPlanBoard({
+        lines: boardLines,
+        products: boardProducts,
+        extraMachines: boardExtraMachines,
+        blankRowsPerShift: boardBlankRows
+      }),
     [boardLines, boardProducts, boardExtraMachines, boardBlankRows]
   );
 
+  const companionBoard = useMemo(
+    () =>
+      buildProductionPlanBoard({
+        lines: companionBoardLines,
+        products: boardProducts,
+        extraMachines: boardExtraMachines,
+        blankRowsPerShift: boardBlankRows
+      }),
+    [companionBoardLines, boardProducts, boardExtraMachines, boardBlankRows]
+  );
+
+  const allBoardLinesChecked =
+    boardSourceLines.length > 0 && boardSourceLines.every(line => selectedBoardLineIds.includes(line.id));
+
+  const toggleBoardLine = (lineId: string) => {
+    setSelectedBoardLineIds(current =>
+      current.includes(lineId) ? current.filter(id => id !== lineId) : [...current, lineId]
+    );
+  };
+
   useEffect(() => {
-    const date = filterDate || selectedPlan?.planDate || todayDateInputValue();
-    void loadBoard(date);
-  }, [filterDate, selectedPlan?.planDate]);
+    const today = todayDateInputValue();
+    setFilterDate(today);
+    void loadPlans({ ngay: today });
+    void loadBoard({ ngay: today });
+  }, []);
 
   useEffect(() => {
     if (!boardPrintActive) return;
@@ -2073,12 +2096,12 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
 
   const printBoard = async () => {
     if (boardLines.length === 0) {
-      setBoardError('Chưa có lệnh sản xuất để in bảng kế hoạch.');
+      setBoardError('Chưa chọn lệnh sản xuất để in bảng kế hoạch.');
       return;
     }
     setIsPrintingBoard(true);
     setBoardError('');
-    setBoardPrintDate(filterDate || selectedPlan?.planDate || todayDateInputValue());
+    setBoardPrintDate(boardFilterLabel);
     setBoardPrintActive(true);
   };
 
@@ -2125,8 +2148,17 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
     try {
       setHistoryPrintMaterials({});
       setHistoryPrintLines(buildPrintablePlanLines(chosen));
+      if (includeBoardOnPrint) {
+        setCompanionBoardLines(toBoardLines(chosen.map(line => ({ ...line, planDate: selectedPlan.planDate }))));
+        setCompanionBoardPrintDate(selectedPlan.planDate || boardFilterLabel);
+        setPendingCompanionBoardAfterHistory(true);
+      } else {
+        setPendingCompanionBoardAfterHistory(false);
+        setCompanionBoardLines([]);
+      }
     } catch (error: any) {
       setLoadError(error.message || 'Không thể chuẩn bị dữ liệu in các lệnh đã chọn.');
+      setPendingCompanionBoardAfterHistory(false);
     } finally {
       setIsPrintingSelected(false);
     }
@@ -2185,10 +2217,47 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
       disablePortraitPrintPage('production-plan-print-page-portrait');
       setHistoryPrintLines([]);
       setHistoryPrintMaterials({});
+      if (pendingCompanionBoardAfterHistory && companionBoardLines.length > 0) {
+        setPendingCompanionBoardAfterHistory(false);
+        setCompanionBoardPrintActive(true);
+      } else {
+        setPendingCompanionBoardAfterHistory(false);
+      }
     };
     window.addEventListener('afterprint', handleAfterHistoryPrint);
     return () => window.removeEventListener('afterprint', handleAfterHistoryPrint);
-  }, []);
+  }, [pendingCompanionBoardAfterHistory, companionBoardLines.length]);
+
+  useEffect(() => {
+    if (!companionBoardPrintActive) return;
+    let cancelled = false;
+    document.body.classList.add('production-plan-board-print-active');
+    enablePrintPageSize('production-plan-board-page-a3-landscape', '420mm 297mm', 8);
+    const timer = window.setTimeout(() => {
+      waitForPrintImagesReady().then(() => {
+        if (cancelled) return;
+        window.print();
+      });
+    }, 150);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      document.body.classList.remove('production-plan-board-print-active');
+      disablePrintPageSize('production-plan-board-page-a3-landscape');
+    };
+  }, [companionBoardPrintActive]);
+
+  useEffect(() => {
+    const handleAfterCompanionBoardPrint = () => {
+      if (!companionBoardPrintActive) return;
+      document.body.classList.remove('production-plan-board-print-active');
+      disablePrintPageSize('production-plan-board-page-a3-landscape');
+      setCompanionBoardPrintActive(false);
+      setCompanionBoardLines([]);
+    };
+    window.addEventListener('afterprint', handleAfterCompanionBoardPrint);
+    return () => window.removeEventListener('afterprint', handleAfterCompanionBoardPrint);
+  }, [companionBoardPrintActive]);
   const plansByDate = useMemo(() => {
     const map = new Map<string, ProductionPlanHistorySummary[]>();
     plans.forEach(plan => {
@@ -2204,9 +2273,11 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
   const applyFilters = () => {
     if (filterDate) {
       void loadPlans({ ngay: filterDate });
+      void loadBoard({ ngay: filterDate });
       return;
     }
     void loadPlans({ tuNgay: fromDate, denNgay: toDate });
+    void loadBoard({ tuNgay: fromDate, denNgay: toDate });
   };
 
   const resetToToday = () => {
@@ -2215,6 +2286,7 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
     setFromDate('');
     setToDate('');
     void loadPlans({ ngay: today });
+    void loadBoard({ ngay: today });
   };
 
   const openCreatePlan = async () => {
@@ -2407,9 +2479,9 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
       <section className="rounded-xl border border-zinc-200 bg-white shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 bg-zinc-50 px-4 py-3">
           <div>
-            <h3 className="text-sm font-black text-zinc-950">Kế hoạch SX theo máy (bảng ngày)</h3>
+            <h3 className="text-sm font-black text-zinc-950">Kế hoạch SX theo máy (KHCV)</h3>
             <p className="mt-0.5 text-[11px] font-semibold text-zinc-500">
-              Cột = máy · dòng = ca · nội dung ô ghép tự động từ lệnh SX + sản phẩm.
+              Cột = máy · dòng = ca · tick chọn lệnh SX (nhiều ngày theo bộ lọc) rồi xem / in bảng.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -2434,12 +2506,81 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
             <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
             Đang tải bảng kế hoạch theo ngày...
           </p>
-        ) : board.lineCount === 0 ? (
+        ) : boardSourceLines.length === 0 ? (
           <p className="px-4 py-8 text-center text-sm font-semibold text-zinc-500">
-            Ngày {filterDate || selectedPlan?.planDate || todayDateInputValue()} chưa có lệnh sản xuất trong kế hoạch.
+            Khoảng {boardFilterLabel} chưa có lệnh sản xuất trong kế hoạch.
           </p>
         ) : (
-          <ProductionPlanBoardScreen board={board} planDate={filterDate || selectedPlan?.planDate || ''} />
+          <div className="space-y-3 p-4">
+            <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-black uppercase tracking-wider text-zinc-600">
+                  Chọn lệnh SX đưa vào KHCV ({selectedBoardLineIds.length}/{boardSourceLines.length})
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedBoardLineIds(boardSourceLines.map(line => line.id))}
+                    className="h-8 rounded-lg border border-zinc-200 bg-white px-3 text-[11px] font-black text-zinc-700 transition hover:bg-zinc-50"
+                  >
+                    Chọn tất cả
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedBoardLineIds([])}
+                    className="h-8 rounded-lg border border-zinc-200 bg-white px-3 text-[11px] font-black text-zinc-700 transition hover:bg-zinc-50"
+                  >
+                    Bỏ chọn
+                  </button>
+                </div>
+              </div>
+              <div className="mt-2 max-h-40 overflow-auto rounded-lg border border-zinc-200 bg-white">
+                <label className="flex sticky top-0 z-[1] items-center gap-2 border-b border-zinc-100 bg-[#e8f0ed] px-3 py-2 text-xs font-black text-zinc-800">
+                  <input
+                    type="checkbox"
+                    checked={allBoardLinesChecked}
+                    onChange={() =>
+                      setSelectedBoardLineIds(
+                        allBoardLinesChecked ? [] : boardSourceLines.map(line => line.id)
+                      )
+                    }
+                    className="h-4 w-4 cursor-pointer accent-[#ef1b2d]"
+                  />
+                  Tất cả lệnh trong khoảng lọc
+                </label>
+                <ul className="divide-y divide-zinc-100">
+                  {boardSourceLines.map(line => (
+                    <li key={line.id}>
+                      <label className="flex cursor-pointer items-start gap-2 px-3 py-2 text-xs hover:bg-zinc-50">
+                        <input
+                          type="checkbox"
+                          checked={selectedBoardLineIds.includes(line.id)}
+                          onChange={() => toggleBoardLine(line.id)}
+                          className="mt-0.5 h-4 w-4 cursor-pointer accent-[#ef1b2d]"
+                        />
+                        <span className="min-w-0">
+                          <span className="font-mono font-bold text-zinc-900">{line.orderCode}</span>
+                          <span className="mt-0.5 block font-semibold text-zinc-600">
+                            {[line.planDate, line.shift, line.machine !== '-' ? line.machine : line.position]
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </span>
+                        </span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            {board.lineCount === 0 ? (
+              <p className="py-6 text-center text-sm font-semibold text-zinc-500">
+                Hãy tick ít nhất một lệnh SX để hiển thị KHCV.
+              </p>
+            ) : (
+              <ProductionPlanBoardScreen board={board} planDate={boardFilterLabel} />
+            )}
+          </div>
         )}
       </section>
 
@@ -2539,15 +2680,24 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
             </div>
             {selectedPlan ? (
               <div className="flex flex-wrap items-center gap-2">
+                <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 text-[11px] font-black text-zinc-700">
+                  <input
+                    type="checkbox"
+                    checked={includeBoardOnPrint}
+                    onChange={event => setIncludeBoardOnPrint(event.target.checked)}
+                    className="h-4 w-4 cursor-pointer accent-[#ef1b2d]"
+                  />
+                  In kèm KHCV
+                </label>
                 <button
                   type="button"
                   onClick={() => void printSelectedLines()}
-                  disabled={selectedLines.length === 0 || isPrintingSelected}
+                  disabled={selectedLines.length === 0 || isPrintingSelected || companionBoardPrintActive}
                   className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#ef1b2d] px-3 text-xs font-black text-white transition hover:bg-[#b30d1c] disabled:cursor-not-allowed disabled:opacity-50"
                   title={
                     selectedPrintLineIds.length > 0
-                      ? `In ${selectedPrintLineIds.length} lệnh đã chọn`
-                      : 'In toàn bộ lệnh của kế hoạch'
+                      ? `In ${selectedPrintLineIds.length} lệnh đã chọn${includeBoardOnPrint ? ' + KHCV' : ''}`
+                      : `In toàn bộ lệnh của kế hoạch${includeBoardOnPrint ? ' + KHCV' : ''}`
                   }
                 >
                   {isPrintingSelected ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
@@ -2587,6 +2737,7 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
                     <th className="px-3 py-2 font-black">Nhân sự</th>
                     <th className="px-3 py-2 font-black">Sản phẩm</th>
                     <th className="px-3 py-2 font-black">Ghi chú</th>
+                    <th className="px-3 py-2 font-black">Thao tác</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
@@ -2613,11 +2764,34 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
                       <td className="px-3 py-2 text-zinc-600">{line.staff}</td>
                       <td className="px-3 py-2 text-zinc-800">{formatProductionPlanHistoryProducts(line.products)}</td>
                       <td className="px-3 py-2 text-zinc-600">{line.note || '-'}</td>
+                      <td className="px-3 py-2">
+                        {onOpenAcceptanceReport ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const may = line.machine !== '-' ? line.machine : line.position;
+                              onOpenAcceptanceReport({
+                                ngay: selectedPlan?.planDate || todayDateInputValue(),
+                                ca: line.shift && line.shift !== '-' ? line.shift : '',
+                                ma_may: may && may !== '-' ? may : '',
+                                ten_may: may && may !== '-' ? may : ''
+                              });
+                            }}
+                            className="inline-flex h-8 items-center gap-1 rounded-lg border border-teal-200 bg-teal-50 px-2.5 text-[11px] font-black text-teal-800 transition hover:bg-teal-100"
+                            title="Mở báo cáo sản lượng / nghiệm thu với ngày · ca · máy của lệnh"
+                          >
+                            <ClipboardCheck className="h-3.5 w-3.5" />
+                            Nghiệm thu
+                          </button>
+                        ) : (
+                          <span className="text-xs font-semibold text-zinc-400">—</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                   {selectedLines.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="px-3 py-8 text-center font-semibold text-zinc-500">
+                      <td colSpan={9} className="px-3 py-8 text-center font-semibold text-zinc-500">
                         Kế hoạch này chưa có dòng chi tiết.
                       </td>
                     </tr>
@@ -2656,6 +2830,12 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
         </div>,
         document.body
       ) : null}
+      {companionBoardPrintActive ? createPortal(
+        <div className="production-plan-board-print-root">
+          <ProductionPlanBoardPrintSheet board={companionBoard} planDate={companionBoardPrintDate} />
+        </div>,
+        document.body
+      ) : null}
       <ProductionPlanModal
         open={showCreateModal}
         onClose={() => { setShowCreateModal(false); setEditingPlan(null); setEditLines([]); }}
@@ -2664,6 +2844,7 @@ export function ProductionPlanHistoryPanel({ onBack }: { onBack: () => void }) {
           await loadPlans();
         }}
         onOpenWarehouseSlip={() => setShowCreateModal(false)}
+        onOpenAcceptanceReport={onOpenAcceptanceReport}
         productionOrders={createOrders}
         machines={createMachines}
         editPlanId={editingPlan?.id}
@@ -2681,6 +2862,7 @@ export function ProductionPlanModal({
   onClose,
   onSaved,
   onOpenWarehouseSlip,
+  onOpenAcceptanceReport,
   productionOrders,
   machines,
   editPlanId,
@@ -2694,6 +2876,7 @@ export function ProductionPlanModal({
   onClose: () => void;
   onSaved: () => void | Promise<void>;
   onOpenWarehouseSlip: () => void;
+  onOpenAcceptanceReport?: (prefill: AcceptanceReportCreatePrefill) => void;
   productionOrders: ProductionOrderRow[];
   machines: MachineRow[];
   editPlanId?: string;
@@ -3979,6 +4162,31 @@ export function ProductionPlanModal({
                                       ) : (
                                         <Pencil className="h-3.5 w-3.5" />
                                       )}
+                                    </button>
+                                  ) : null}
+                                  {onOpenAcceptanceReport ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const may = String(line.position || '').trim();
+                                        const order = findProductionOrderForPlanLine(line, effectiveProductionOrders);
+                                        const ngay =
+                                          parseProductionOrderFilterDate(order?.startDate || '') ||
+                                          parseProductionOrderFilterDate(planDate) ||
+                                          planDate ||
+                                          todayDateInputValue();
+                                        onOpenAcceptanceReport({
+                                          ngay,
+                                          ca: line.shift && line.shift !== '-' ? line.shift : '',
+                                          ma_may: may && may !== '-' ? may : '',
+                                          ten_may: may && may !== '-' ? may : ''
+                                        });
+                                        onClose();
+                                      }}
+                                      className="flex h-7 w-7 items-center justify-center rounded border border-teal-200 text-teal-700"
+                                      title="Nghiệm thu"
+                                    >
+                                      <ClipboardCheck className="h-3.5 w-3.5" />
                                     </button>
                                   ) : null}
                                   <button

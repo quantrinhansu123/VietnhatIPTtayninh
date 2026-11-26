@@ -20,3 +20,5 @@
 - Form thêm mới điền sẵn Ngày · Ca · Máy từ bộ lọc hub khi có.
 - UI dùng quyền thêm/sửa/xóa `report-lists`, cùng cơ chế phân quyền hiện có; API theo mô hình API hiện tại của repo.
 - Không ghi xuất/nhập, không cập nhật tồn kho. Không tự tạo bảng qua PostgREST; cần chạy SQL trên DB chính.
+- **Vật tư thay thế (Thành phần SP):** mỗi thành phần trong `san_pham.npl_phan_tram` có thể kèm `thay_the: [{ma, ten, don_vi, so_luong, so_luong_tp}]` (vd ONG-30CM ×2 = ONG-60CM ×1). Không cần migration (JSON). Sửa ở modal «Sửa thành phần» (`san-pham/index.tsx`), hoặc từ dòng đích Cắt Lõi bằng nút **+ Thành phần SP / thay thế** (`SubstituteDialog.tsx`: gắn thay thế vào thành phần có sẵn, hoặc thêm mới thành phần). Parser server: `parseNplThayThe` trong `server.ts`. **Chưa** dùng `thay_the` để gộp cắt lõi vào dòng thành phần ở BB 3.2.
+- **Gợi ý đích theo SP:** khi chọn vật tư gốc (vd ONG-1.38M), form tải `/api/san-pham?format=table` và hiện khối «Quy đổi theo thành phần SP» — liệt kê mã ống ngắn hơn gốc đang dùng trong thành phần / `thay_the` của SP nào, kèm ĐM ≈ floor(dài gốc / dài đích) và nút **Thêm đích** (`productHints.ts`).

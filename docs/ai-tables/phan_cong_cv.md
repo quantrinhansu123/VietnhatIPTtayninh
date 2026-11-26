@@ -22,9 +22,11 @@ Ngày và ca áp dụng cho cả kế hoạch. Mỗi dòng cần giờ, nhân s�
 
 ## API
 
-- `GET /api/phan-cong-cv?ngay=&ca=` → `{ rows, total }`
+- `GET /api/phan-cong-cv?ngay=&ca=&from=&to=&limit=` → `{ rows, total }` (`from`/`to` = khoảng `ngay`; nếu có `ngay` thì bỏ qua khoảng)
 - `PUT /api/phan-cong-cv` nhận `{ ngay, ca, items: [...] }` và thay các dòng của ngày + ca trong một giao dịch qua `phan_cong_cv_replace`. Mảng rỗng xóa kế hoạch của ngày + ca đó.
 - `DELETE /api/phan-cong-cv/:id`
+
+**Hub xem báo cáo:** tab **Nhật ký công việc** (`/danh-sach-bao-cao`) đọc bảng này + khung giờ ca để hiện nhân sự · công việc · từ/đến giờ.
 
 **UI chọn:**
 - **Công việc:** task việc — sổ xuống các task đã lưu trong `phan_cong_cv.cong_viec`, hoặc nhập task mới

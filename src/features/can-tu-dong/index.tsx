@@ -2699,7 +2699,7 @@ export function CanTuDongPanel({
           <div className="border-b border-emerald-100 bg-emerald-100/80 px-3 py-2.5 text-[10px] font-black uppercase tracking-wider text-emerald-900">
             Mã SP · Số lượng
           </div>
-          <div className="max-h-[13.5rem] overflow-y-auto">
+          <div className="max-h-[17rem] overflow-y-auto">
             <table className="min-w-full border-collapse text-left text-xs">
               <thead className="sticky top-0 bg-emerald-50/95">
                 <tr className="border-b border-emerald-100 text-[10px] font-black uppercase tracking-wider text-emerald-900">
@@ -2712,10 +2712,9 @@ export function CanTuDongPanel({
                   <th className="whitespace-nowrap px-2 py-2 text-right" title="Σ Trọng lượng TT">
                     KL TT
                   </th>
-                  <th className="whitespace-nowrap px-2 py-2 text-right">CL</th>
-                </tr>
+                  <th className="whitespace-nowrap px-2 py-2 text-right">CL</th>                </tr>
               </thead>
-              <tbody className="font-mono text-sm font-black text-emerald-950">
+              <tbody className="font-mono text-base font-bold leading-7 text-emerald-950 [&>tr>td]:py-2.5 [&>tr>td]:align-middle">
                 {loading ? (
                   <tr>
                     <td colSpan={6} className="px-3 py-4 text-center text-zinc-400">
@@ -2738,8 +2737,7 @@ export function CanTuDongPanel({
                           : row.diff < 0
                             ? 'text-rose-700'
                             : 'text-zinc-800';
-                    const nameTitle = row.name ? `${row.maSp} · ${row.name}` : row.maSp;
-                    return (
+                    const nameTitle = row.name ? `${row.maSp} · ${row.name}` : row.maSp;                    return (
                       <tr key={row.key} className="border-t border-emerald-50 hover:bg-emerald-50/50">
                         <td className="w-[5.5rem] max-w-[5.5rem] px-2 py-2 align-top">
                           <div

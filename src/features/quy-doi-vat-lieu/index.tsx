@@ -14,6 +14,13 @@ import {
   TablePagination
 } from '../../components/shared/table';
 import { getProductionShiftOptions, normalizeShiftSettings, type ShiftSetting } from '../../utils/shiftSettings';
+import { SubstituteDialog } from './SubstituteDialog';
+import {
+  buildDestHintsFromProducts,
+  findProductsUsingMaterial,
+  type ProductHintRow
+} from './productHints';
+import { parseProductNplItems } from '../san-pham/types';
 import { parseMaterialConversionBatch, type MaterialConversionInput } from './validation';
 import {
   buildConversionMaterialOptions,
@@ -386,7 +393,8 @@ function DestinationMaterialTable({
   onDinhMucChange,
   onQuantityChange,
   onGhiChuChange,
-  onNguonToiChange
+  onNguonToiChange,
+  onSubstitute
 }: {
   selectLabel: string;
   destinations: DestinationDraft[];
@@ -406,6 +414,7 @@ function DestinationMaterialTable({
   onQuantityChange: (key: string, value: string) => void;
   onGhiChuChange: (key: string, value: string) => void;
   onNguonToiChange: (key: string, value: string) => void;
+  onSubstitute?: (code: string) => void;
 }) {
   const srcLen = parseDraftQuantity(sourceLength);
   const srcWeight = parseDraftQuantity(sourceUnitWeight);
@@ -485,6 +494,16 @@ function DestinationMaterialTable({
                     </fieldset>
                     {missing && (
                       <p className="mt-1 text-[11px] text-amber-700">Mã cũ không còn trong Kho NVL.</p>
+                    )}
+                    {onSubstitute && destination.vat_tu_quy_doi && (
+                      <button
+                        type="button"
+                        onClick={() => onSubstitute(destination.vat_tu_quy_doi)}
+                        className="mt-1 text-[11px] font-bold text-blue-700 hover:underline"
+                        title="Gắn mã này làm Vật tư thay thế trong Thành phần sản phẩm, hoặc thêm mới thành phần"
+                      >
+                        + Thành phần SP / thay thế
+                      </button>
                     )}
                   </td>
                   <td className="max-w-[10rem] px-2.5 py-2.5 text-sm text-slate-800">
@@ -620,11 +639,14 @@ export default function MaterialConversionPanel({
   const [editingNhomId, setEditingNhomId] = useState<string | null>(null);
   const [editingIds, setEditingIds] = useState<string[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [substituteCode, setSubstituteCode] = useState('');
   const [draft, setDraft] = useState<FormDraft>(() => draftFromFilters(filters));
   const [materials, setMaterials] = useState<ConversionMaterialOption[]>([]);
   const [materialsLoading, setMaterialsLoading] = useState(true);
   const [materialsError, setMaterialsError] = useState('');
   const [materialsRevision, setMaterialsRevision] = useState(0);
+  const [products, setProducts] = useState<ProductHintRow[]>([]);
+  const [productsLoading, setProductsLoading] = useState(false);
   const [shiftSettings, setShiftSettings] = useState<ShiftSetting[]>([]);
   const [machines, setMachines] = useState<MachineOption[]>([]);
   const [optionsLoading, setOptionsLoading] = useState(true);
@@ -634,6 +656,24 @@ export default function MaterialConversionPanel({
     () => materials.filter(item => /^ong[-_\s.]/i.test(item.code.trim())).map(item => item.code),
     [materials]
   );
+  const sourceLengthForHints =
+    parseDraftQuantity(draft.chieu_dai_goc) ?? materialSpecs(materialByCode.get(draft.vat_tu_goc)).unitLength;
+  const destHints = useMemo(
+    () =>
+      buildDestHintsFromProducts({
+        products,
+        sourceCode: draft.vat_tu_goc,
+        sourceLengthCm: sourceLengthForHints,
+        materialByCode
+      }),
+    [products, draft.vat_tu_goc, sourceLengthForHints, materialByCode]
+  );
+  const selectedDestSpLinks = useMemo(() => {
+    const codes = draft.destinations.map(item => item.vat_tu_quy_doi).filter(Boolean);
+    return codes.flatMap(code =>
+      findProductsUsingMaterial(products, code).map(row => ({ ...row, materialCode: code }))
+    );
+  }, [draft.destinations, products]);
   const shiftOptions = useMemo(() => getProductionShiftOptions(shiftSettings), [shiftSettings]);
   const machineCodes = useMemo(() => machines.map(item => item.code), [machines]);
   const materialLabel = (code: string) => {
@@ -669,6 +709,34 @@ export default function MaterialConversionPanel({
     })();
     return () => controller.abort();
   }, [materialsRevision]);
+
+  useEffect(() => {
+    if (!showForm) return;
+    const controller = new AbortController();
+    setProductsLoading(true);
+    void (async () => {
+      try {
+        const res = await fetch('/api/san-pham?format=table', { signal: controller.signal });
+        const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || 'Không tải được danh sách sản phẩm.');
+        const list: ProductHintRow[] = (Array.isArray(data.products) ? data.products : [])
+          .filter((row: { id?: unknown }) => row && !String(row.id ?? '').startsWith('nvl-'))
+          .map((row: { id?: unknown; ma_sp?: unknown; ten_sp?: unknown; npl_phan_tram?: unknown }) => ({
+            id: String(row.id ?? ''),
+            code: String(row.ma_sp ?? '').trim(),
+            name: String(row.ten_sp ?? '').trim(),
+            items: parseProductNplItems(row.npl_phan_tram)
+          }))
+          .filter((row: ProductHintRow) => row.code);
+        if (!controller.signal.aborted) setProducts(list);
+      } catch {
+        if (!controller.signal.aborted) setProducts([]);
+      } finally {
+        if (!controller.signal.aborted) setProductsLoading(false);
+      }
+    })();
+    return () => controller.abort();
+  }, [showForm]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -777,6 +845,34 @@ export default function MaterialConversionPanel({
         so_luong_quy_doi: recomputeDestQty(value, item.dinh_muc, item.so_luong_quy_doi)
       }))
     }));
+  };
+
+  const applyDestHint = (code: string, suggestedDinhMuc: number | null) => {
+    const specs = materialSpecs(materialByCode.get(code));
+    setDraft(prev => {
+      const emptyIndex = prev.destinations.findIndex(item => !item.vat_tu_quy_doi);
+      const already = prev.destinations.some(item => item.vat_tu_quy_doi === code);
+      if (already) return prev;
+      const dinhMuc = suggestedDinhMuc != null ? formatDraftNumber(suggestedDinhMuc) : '';
+      const nextDest = {
+        vat_tu_quy_doi: code,
+        chieu_dai_quy_doi: formatDraftNumber(specs.unitLength),
+        dinh_muc: dinhMuc,
+        so_luong_quy_doi: recomputeDestQty(prev.so_luong_goc, dinhMuc, '')
+      };
+      if (emptyIndex >= 0) {
+        return {
+          ...prev,
+          destinations: prev.destinations.map((item, index) =>
+            index === emptyIndex ? { ...item, ...nextDest } : item
+          )
+        };
+      }
+      return {
+        ...prev,
+        destinations: [...prev.destinations, newDestinationDraft(nextDest)]
+      };
+    });
   };
 
   const applyDestCode = (key: string, code: string) => {
@@ -1080,6 +1176,81 @@ export default function MaterialConversionPanel({
           onGhiChuChange={value => setDraft(prev => ({ ...prev, ghi_chu_goc: value }))}
           onNguonLayChange={value => setDraft(prev => ({ ...prev, nguon_lay: value }))}
         />
+        {draft.vat_tu_goc ? (
+          <div className="rounded-lg border border-sky-200 bg-sky-50/80 px-3 py-2.5 text-xs text-sky-950">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="font-bold uppercase tracking-wide text-sky-800">
+                Quy đổi theo thành phần SP
+              </p>
+              {productsLoading ? (
+                <span className="inline-flex items-center gap-1 text-[11px] text-sky-700">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Đang tải SP…
+                </span>
+              ) : null}
+            </div>
+            {!productsLoading && destHints.length === 0 ? (
+              <p className="mt-1 text-[11px] text-sky-800/80">
+                Chưa có mã ống ngắn hơn {draft.vat_tu_goc} trong thành phần / vật tư thay thế của SP nào.
+                Chọn mã đích bên dưới, hoặc gắn bằng «+ Thành phần SP / thay thế».
+              </p>
+            ) : null}
+            {destHints.length > 0 ? (
+              <ul className="mt-2 space-y-1.5">
+                {destHints.slice(0, 12).map(hint => {
+                  const spLabel = hint.products
+                    .slice(0, 4)
+                    .map(p => `${p.code}${p.name ? ` · ${p.name}` : ''}`)
+                    .join('; ');
+                  const more = hint.products.length > 4 ? ` (+${hint.products.length - 4})` : '';
+                  const already = draft.destinations.some(item => item.vat_tu_quy_doi === hint.code);
+                  return (
+                    <li
+                      key={hint.code}
+                      className="flex flex-wrap items-start justify-between gap-2 rounded-md border border-sky-100 bg-white/80 px-2 py-1.5"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-slate-800">
+                          {hint.code}
+                          {hint.lengthCm != null ? (
+                            <span className="ml-1 font-mono font-normal text-slate-500">
+                              · {formatNumber(hint.lengthCm, 4)} cm
+                            </span>
+                          ) : null}
+                          {hint.suggestedDinhMuc != null ? (
+                            <span className="ml-1 font-mono font-normal text-emerald-700">
+                              · ĐM ≈ {hint.suggestedDinhMuc}
+                            </span>
+                          ) : null}
+                        </p>
+                        <p className="mt-0.5 text-[11px] leading-snug text-slate-600" title={spLabel + more}>
+                          SP: {spLabel || '—'}
+                          {more}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={busy || materialsLoading || already}
+                        onClick={() => applyDestHint(hint.code, hint.suggestedDinhMuc)}
+                        className="shrink-0 rounded-md border border-sky-300 bg-white px-2 py-1 text-[11px] font-bold text-sky-800 disabled:opacity-50"
+                      >
+                        {already ? 'Đã thêm' : 'Thêm đích'}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
+            {selectedDestSpLinks.length > 0 ? (
+              <p className="mt-2 text-[11px] text-slate-700">
+                <span className="font-bold">Đích đã chọn dùng ở SP:</span>{' '}
+                {[...new Map(selectedDestSpLinks.map(row => [`${row.materialCode}|${row.code}`, row])).values()]
+                  .slice(0, 8)
+                  .map(row => `${row.materialCode} → ${row.code}`)
+                  .join(' · ')}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         <DestinationMaterialTable
           selectLabel={materialsLoading ? 'Đang tải Kho NVL…' : 'Chọn vật tư quy đổi'}
           destinations={draft.destinations}
@@ -1116,7 +1287,15 @@ export default function MaterialConversionPanel({
             ...prev,
             destinations: prev.destinations.map(item => item.key === key ? { ...item, nguon_toi: value } : item)
           }))}
+          onSubstitute={setSubstituteCode}
         />
+        {substituteCode && (
+          <SubstituteDialog
+            materialCode={substituteCode}
+            material={materialByCode.get(substituteCode)}
+            onClose={() => setSubstituteCode('')}
+          />
+        )}
       </div>
       {!materialsLoading && !materialsError && materials.length === 0 && <p className="mt-2 text-amber-700 text-xs">Kho NVL chưa có vật tư.</p>}
       {saveHint ? <p className="mt-2 text-xs font-semibold text-rose-700">{saveHint}</p> : null}

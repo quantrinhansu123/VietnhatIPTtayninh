@@ -22,21 +22,21 @@ export function machineLabelsMatch(left: string, right: string, machines: Machin
 }
 
 /**
- * Trưởng ca trên lệnh SX.
- * Ưu tiên `truong_ca` / shiftLead. Lệnh cũ chưa tách vai trò → fallback
- * nhân sự chính, rồi người đầu trong `nhan_su` (không lấy thợ phụ).
+ * Chỉ lấy trưởng ca (`truong_ca` / shiftLead) trên lệnh SX.
+ * Không fallback nhân sự chính / thợ — biểu đồ TH chỉ tính trưởng ca.
  */
 export function orderShiftLeadNames(order: ProductionOrderRow): string[] {
-  const fromLead = splitProductionOrderStaffNames(order.shiftLead);
-  if (fromLead.length > 0) return fromLead;
-  const fromMain = splitProductionOrderStaffNames(order.mainStaff);
-  if (fromMain.length > 0) return fromMain;
-  return splitProductionOrderStaffNames(order.staff).slice(0, 1);
+  return splitProductionOrderStaffNames(order.shiftLead);
 }
 
 /** @deprecated Dùng orderShiftLeadNames — bảng TH chỉ tính trưởng ca. */
 export function orderMainStaffNames(order: ProductionOrderRow): string[] {
   return orderShiftLeadNames(order);
+}
+
+/** Tên trưởng ca từ cột đã ghép; rỗng nếu chưa gán (không tạo nhãn «Chưa gán»). */
+export function staffChartLabels(congNhanPhuTrach: string | null | undefined): string[] {
+  return splitProductionOrderStaffNames(String(congNhanPhuTrach || ''));
 }
 
 export function staffNamesInclude(haystack: string, needle: string) {

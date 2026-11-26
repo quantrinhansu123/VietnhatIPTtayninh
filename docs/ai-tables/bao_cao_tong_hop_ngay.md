@@ -14,6 +14,6 @@
 - src/features/bieu-do-th/index.tsx — tải dữ liệu, lọc ngày/ca/máy/trưởng ca, chế độ daily.
 - src/features/bieu-do-th/comparisonData.ts — comparisonRows: chỉ ngày đơn, ca/máy cụ thể; chọn updated_at mới nhất.
 - src/features/bieu-do-th/TongHopTreeTable.tsx — mở rộng Ngày → Ca → Máy, mở chi tiết tính toán.
-- src/features/bieu-do-th/staffEnrichment.ts — bổ sung trưởng ca từ lệnh SX.
+- src/features/bieu-do-th/staffEnrichment.ts — bổ sung trưởng ca từ lệnh SX (chỉ `truong_ca`).
 
 Chỉ đọc snapshot đã lưu khi Tính toán. Cảnh báo khi chạm giới hạn 1.000 bản ghi; thu hẹp bộ lọc để xem đầy đủ.

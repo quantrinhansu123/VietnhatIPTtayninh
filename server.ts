@@ -9688,6 +9688,7 @@ async function startServer() {
   });
 }
 
+const ENFORCE_IMPORTED_BEFORE_EXPORT = false;
 export function createApp() {
   const app = express();
   app.use(express.json({ limit: '12mb' }));
@@ -14658,7 +14659,8 @@ export function createApp() {
         });
         // Xuất TP: chặn mã tem QR (có hậu tố `_`/`+`) chưa có dòng trong nhap_kho — tránh xuất âm tồn.
         // Mã không có hậu tố (thêm tay từ lệnh xuất, không quét QR) không bị chặn.
-        const serialItems = pendingItems.filter(item => /[_+]/.test(item.fullCode.slice(1)));
+        // Đã mở chặn: mã chưa nhập kho vẫn được xuất (đặt true để bật lại).
+        const serialItems = ENFORCE_IMPORTED_BEFORE_EXPORT ? pendingItems.filter(item => /[_+]/.test(item.fullCode.slice(1))) : [];
         if (serialItems.length) {
           const importedKeys = new Set<string>();
           for (let offset = 0; offset < serialItems.length; offset += 100) {
@@ -14899,7 +14901,7 @@ export function createApp() {
       const lineTable = loaiPhieu === 'nhap' ? 'nhap_kho' : 'xuat_kho';
 
       // Xuất TP quét tem QR: mã phải đã có dòng trong nhap_kho (tránh xuất âm tồn).
-      if (loaiPhieu === 'xuat' && (loai === 'san_pham' || !loai) && /[_+]/.test(maSpFull.slice(1))) {
+      if (ENFORCE_IMPORTED_BEFORE_EXPORT && loaiPhieu === 'xuat' && (loai === 'san_pham' || !loai) && /[_+]/.test(maSpFull.slice(1))) {
         const { data: importedLine, error: importedError } = await supabaseKho
           .from('nhap_kho')
           .select('id')

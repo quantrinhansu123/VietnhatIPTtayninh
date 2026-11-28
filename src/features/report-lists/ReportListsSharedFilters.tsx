@@ -136,6 +136,7 @@ export function ReportListsSharedFiltersBar({ value, onChange }: Props) {
       />
       <FilterCombobox
         label="Máy"
+        allLabel="Tất cả máy"
         options={machines.map(machine => machine.code)}
         value={value.machineCode || 'all'}
         onChange={next => patch({ machineCode: next === 'all' ? '' : next })}
@@ -144,7 +145,7 @@ export function ReportListsSharedFiltersBar({ value, onChange }: Props) {
           if (!found) return code;
           return found.name && found.name !== found.code ? `${found.code} · ${found.name}` : found.code;
         }}
-        compact
+        searchPlaceholder="Tìm máy..."
       />
       <TableDateFilter
         label="Từ ngày"

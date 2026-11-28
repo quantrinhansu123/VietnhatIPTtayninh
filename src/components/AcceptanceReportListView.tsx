@@ -1007,6 +1007,9 @@ export default function AcceptanceReportListView({
   }, [reports]);
 
   const normalizedSearch = searchText.trim().toLowerCase();
+  const machineOptions = useMemo(() => Array.from(new Set<string>(
+    reports.map(report => (report.ma_may || report.ten_may || '').trim()).filter(Boolean)
+  )).sort((a, b) => a.localeCompare(b, 'vi', { numeric: true })), [reports]);
   const filteredReports = useMemo(() => {
     return reports.filter(report => {
       // Quy định tab Sản lượng: chỉ hiện Thành phẩm / Gia công; không hiện SP lỗi, SP rác,
@@ -1857,6 +1860,14 @@ export default function AcceptanceReportListView({
               onChange={value => setFilterShift(value === 'all' ? '' : value)}
               searchPlaceholder="Tìm ca..."
               compact
+            />
+            <FilterCombobox
+              label="Máy"
+              allLabel="Tất cả máy"
+              options={machineOptions}
+              value={filterMachine || 'all'}
+              onChange={value => setFilterMachine(value === 'all' ? '' : value)}
+              searchPlaceholder="Tìm máy..."
             />
             <TableDateFilter label="Từ ngày" value={filterFromDate} onChange={setFilterFromDate} />
             <TableDateFilter label="Đến ngày" value={filterToDate} onChange={setFilterToDate} />

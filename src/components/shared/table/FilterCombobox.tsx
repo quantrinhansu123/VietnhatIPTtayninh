@@ -15,6 +15,7 @@ export function FilterCombobox({
   onChange,
   searchPlaceholder = 'Tìm kiếm...',
   includeAll = true,
+  allLabel,
   compact = false,
   formatOption = (option: string) => option,
   searchable = true,
@@ -31,6 +32,7 @@ export function FilterCombobox({
   onChange: (value: string) => void;
   searchPlaceholder?: string;
   includeAll?: boolean;
+  allLabel?: string;
   /** Chỉ hiển thị giá trị đang chọn trong ô, không thêm nhãn phía trước. */
   compact?: boolean;
   formatOption?: (option: string) => string;
@@ -144,7 +146,7 @@ export function FilterCombobox({
         }`}
       >
         <span className="whitespace-nowrap">
-          {value === 'all' ? label : compact ? formatOption(value) : `${label}: ${formatOption(value)}`}
+          {value === 'all' ? (allLabel || label) : compact ? formatOption(value) : `${label}: ${formatOption(value)}`}
         </span>
         <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
@@ -182,7 +184,7 @@ export function FilterCombobox({
                       value === 'all' ? 'font-black text-[#ef1b2d]' : 'font-semibold text-zinc-700'
                     }`}
                   >
-                    Tất cả
+                    {allLabel || 'Tất cả'}
                   </button>
                 ) : null}
                 {filteredOptions.map(option => (

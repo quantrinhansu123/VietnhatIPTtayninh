@@ -22,6 +22,7 @@
 - Mặc định **Hôm qua** (Từ ngày = Đến ngày = ngày hôm qua).
 - Tìm kiếm debounce ~350ms; ngày · ca · máy áp dụng ngay.
 - Panel trong hub dùng `hideLocalFilters` để không hiện toolbar lọc trùng.
+- Bộ lọc Máy của hub cho chọn **Tất cả máy** hoặc máy cụ thể và áp dụng chung cho các tab; trang Sản lượng độc lập có bộ lọc máy riêng theo các máy trong dữ liệu đã tải của khoảng ngày.
 - Tab theo LSX cũng remount theo `filtersKey`; `ControlBoardPanel` khởi tạo đúng bộ lọc cha ngay từ lần render đầu. Khi ẩn bộ lọc riêng, không tự đổi máy/lệnh SX để tránh lệch phạm vi bộ lọc chung.
 - Tab theo LSX dùng `savedReportView`: đọc snapshot `bb_bao_cao_tinh_toan` để hiển thị, chỉ tải danh mục máy/ca cho nhãn và dialog; không tự tải 13 nguồn phiếu, cân AI hoặc tải lại kho khi trở về tab trình duyệt. Xuất/tồn đầu/tồn cuối/sản lượng lấy trực tiếp snapshot. **Tính toán/Đồng bộ** vẫn tải nguồn mới rồi ghi DB.
 
